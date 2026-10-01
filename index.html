@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>하이텐트 천막창고 견적요청</title>
-<meta name="description" content="용도와 크기를 넣으면 천막창고 구조도를 바로 보여드리고 견적을 받아보실 수 있습니다.">
+<meta name="description" content="용도와 크기를 넣으면 천막창고 3D 도면을 바로 보여드리고 견적을 받아보실 수 있습니다.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Roboto:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;700&display=swap">
 <style>
@@ -136,6 +136,9 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 #emailCustom{margin-top:6px}
 .step h2 .n,.step h2 .edit{white-space:nowrap;flex:none}
 .step.closed h2{white-space:nowrap}
+#memo{min-height:130px}
+@media (max-width:600px){#memo{min-height:285px}}
+.nw{white-space:nowrap}
 
 [hidden]{display:none!important}
 </style>
@@ -165,8 +168,8 @@ body{font-size:15.5px}
 </header>
 
 <section class="hero">
-  <h1>크기만 넣으면 <em>천막창고 구조도</em>가 바로 그려집니다</h1>
-  <p>용도와 현장, 가로·세로·높이를 고르면 하이텐트 실제 시공 도면 방식으로 3D·투시도·평면도를 바로 보여드립니다. 견적을 요청하시면 담당자가 현장 조건을 확인해 견적서와 정면·측면 구조도를 메일로 보내드립니다.</p>
+  <h1>크기만 넣으면 <em>천막창고 <span class="nw">3D 도면</span></em>이 바로 그려집니다</h1>
+  <p>용도와 현장, 가로·세로·높이를 고르면 하이텐트 실제 시공 도면 방식으로 3D·투시도·평면도를 바로 보여드립니다. 견적을 요청하시면 유선 상담 후 견적서와 정면·측면도를 보내드리고, 계약 후에는 가설건축물 신고용 도면까지 준비해 드립니다.</p>
 </section>
 
 <div class="grid">
@@ -219,7 +222,7 @@ body{font-size:15.5px}
         <label class="f">원단<select id="fabric"></select></label>
         <label class="f">지붕 벤츄레타 Ø600<select id="vent"></select></label>
         <label class="f">출입문 (슬라이딩)<span class="unit"><input type="number" id="doorN" min="0" max="10" step="1" inputmode="numeric"><i>개</i></span></label>
-        <label class="f">출입문 크기 (폭×높이)<select id="doorS"><option value="4x4">4 × 4 m (지게차)</option><option value="5x4.5">5 × 4.5 m (5톤 화물차)</option><option value="6x5">6 × 5 m (대형 차량)</option><option value="3x3">3 × 3 m (소형)</option></select></label>
+        <label class="f">출입문 크기 (폭×높이)<select id="doorS"><option value="4x4">4 × 4 m (지게차·표준)</option><option value="5x4.5">5 × 4.5 m (5톤 화물차)</option><option value="6x5">6 × 5 m (대형 차량)</option><option value="3x3">3 × 3 m (소형)</option></select></label>
         <label class="f">창문 1.5×1.0m<select id="window"><option value="0">없음</option><option>2</option><option>4</option><option>6</option><option>8</option></select></label>
         <label class="f">벽면 환풍기<select id="fan"><option value="0">없음</option><option>2</option><option>4</option><option>6</option></select></label>
       </div>
@@ -274,7 +277,7 @@ body{font-size:15.5px}
       <label class="f">토목 공사 (기초·바닥)<select id="civil"><option>필요 없음</option><option>바닥 콘크리트 타설</option><option>기초(줄기초)만 필요</option><option>현장 확인 후 결정</option></select></label>
       <span></span>
     </div>
-    <label class="f" style="margin-top:10px">요청 사항<textarea id="memo" placeholder="ㄱ자·여러 동 형태, 기존 건물에 붙이기, 원단 색상, 예산 등 무엇이든 적어주세요"></textarea></label>
+    <label class="f" style="margin-top:10px">요청 사항<textarea id="memo" rows="5" placeholder="사각형이 아닌 경우(ㄱ자·ㄷ자·T자·여러 동): 위 STEP 3에는 가장 큰 동의 크기를 넣고, 나머지 부분의 크기와 붙는 위치를 여기에 적어주세요.&#10;예) ㄱ자 — 본동 20×40m 오른쪽 끝에 10×15m 동을 직각으로 붙임&#10;예) 2개 동 — 20×30m 2동을 장변끼리 나란히 (사이 간격 없음)&#10;기존 건물에 붙이기, 원단 색상, 예산 등도 자유롭게 적어주세요."></textarea></label>
     <div class="consent">
       개인정보 수집·이용 안내: 하이텐트는 견적 회신과 상담을 위해 성함·연락처·이메일·현장 위치를 수집하며, 상담 종료 후 1년간 보관한 뒤 파기합니다. 동의하지 않으시면 견적 요청을 보내실 수 없습니다.
       <label class="chk"><input type="checkbox" id="agree"> 위 내용에 동의합니다 *</label>
@@ -1929,7 +1932,7 @@ var PRESETS = [[10, 20, 5], [12, 24, 5], [15, 30, 5], [20, 30, 6], [20, 40, 6], 
 var LOCKED = {front: '정면 구조도', side: '측면 구조도'};
 var DRAFT = 'hytent.quote.draft';
 var FIELDS = ['client', 'contact', 'phone', 'emailId', 'emailDomain', 'emailCustom', 'when', 'floor', 'civil', 'memo'];
-function fresh() { return {use: 'warehouse', region: '경기', district: '', place: '', W: 15, L: 30, H: 5, roof: 'arch', highWind: false, doorN: 1, doorS: '5x4.5', window: '0', fan: '0', vent: null, fabric: null, step: 1, done: 0}; }
+function fresh() { return {use: 'warehouse', region: '경기', district: '', place: '', W: 15, L: 30, H: 5, roof: 'arch', highWind: false, doorN: 1, doorS: '4x4', window: '0', fan: '0', vent: null, fabric: null, step: 1, done: 0}; }
 var S = fresh(), view = '3d', est = null, t3 = null, threeP = null;
 
 function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : d; }
@@ -2045,7 +2048,7 @@ function recompute() {
   if (g.truss) h += ' 이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)으로 계획합니다.';
   if (inp.W > 40) h += ' 폭 40m를 넘으면 별도 구조 검토가 필요합니다.';
   $('sizeHint').textContent = h; $('sizeHint').className = 'hint' + (inp.W > 40 ? ' warn' : '');
-  $('optHint').textContent = '벤츄레타 권장 ' + ventAuto() + '개는 하이텐트 시공 현장들의 같은 크기 배치 기준입니다. 원단 추천: ' + fabName(fabricAuto()) + '.';
+  $('optHint').textContent = '벤츄레타 권장 ' + ventAuto() + '개는 하이텐트 시공 현장들의 같은 크기 배치 기준입니다. 원단 추천: ' + fabName(fabricAuto()) + '.' + (+S.doorS.split('x')[0] > 4 && +S.doorN ? ' 출입문은 보통 폭 4m로 시공합니다. 4m보다 넓은 문은 기둥 간격을 조정해야 해서 현장 확인 후 위치·크기를 확정합니다.' : '');
   summaries(); renderView(); save();
 }
 var rT; function schedule() { clearTimeout(rT); rT = setTimeout(recompute, 150); }
