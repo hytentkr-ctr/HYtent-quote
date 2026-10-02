@@ -1775,7 +1775,7 @@ Tent3D.prototype.init = function (THREE) {
       var d0 = Math.hypot(p.x - o.x, p.y - o.y), d1 = Math.hypot(e.clientX - o.x, e.clientY - o.y);
       if (d0 > 0 && d1 > 0) self.dist *= d0 / d1;
     } else if (p.pan) self.pan(dx, dy);
-    else { self.yaw -= dx * 0.008; self.pitch = Math.max(0.03, Math.min(1.5, self.pitch + dy * 0.006)); }
+    else { self.yaw += dx * 0.008; self.pitch = Math.max(0.03, Math.min(1.5, self.pitch + dy * 0.006)); }   // 끄는 방향으로 모델이 돌아가게 (일반 3D 뷰어와 같은 방향)
     p.x = e.clientX; p.y = e.clientY; self.draw();
   });
   function up(e) { delete ptrs[e.pointerId]; }
