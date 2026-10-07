@@ -1004,6 +1004,7 @@ View.prototype.leader = function (x, y, dx, dy, label) {
 // ── 도면 공통 틀 ──
 function frame(pen, info, title, scale, no) {
   if (info.bld) title = title + ' · ' + info.bld;
+  if (info.pv) title = title.replace(/\s*\(.*\)$/, '') + ' (계약 전 검토용)';   // 미리보기: 축척 표기 없음(자로 재서 간격을 알 수 없게)
   if (info.no) no = info.no;
   pen.rect(8, 8, SHEET.w - 16, SHEET.h - 16, {w: 0.6});
   // 현장명 (좌상단, 하이텐트 제출용 양식)
@@ -1014,11 +1015,11 @@ function frame(pen, info, title, scale, no) {
   pen.text(cx, SHEET.h - 22, title, {size: 5, anchor: 'middle', weight: 'bold'});
   var tw = title.length * 4.9 + 6;
   pen.line(cx - tw / 2, SHEET.h - 20, cx + tw / 2, SHEET.h - 20, {w: 0.35});
-  pen.text(cx, SHEET.h - 15.5, 'SCALE 1/' + scale + '  (A3 기준)', {size: 2.3, anchor: 'middle', c: 'dim'});
+  if (!info.pv) pen.text(cx, SHEET.h - 15.5, 'SCALE 1/' + scale + '  (A3 기준)', {size: 2.3, anchor: 'middle', c: 'dim'});
   // 표제란
   var bx = SHEET.w - 8 - 104, by = SHEET.h - 8 - 44, rows = [
     ['공 사 명', info.project || ''], ['도 면 명', title], ['시 공 사', info.company || '하이텐트(HYTENT)'],
-    ['연 락 처', info.phone || ''], ['E-mail', info.email || ''], ['축척 / 일자', '1/' + scale + '   ' + (info.date || '')]];
+    ['연 락 처', info.phone || ''], ['E-mail', info.email || ''], info.pv ? ['일    자', info.date || ''] : ['축척 / 일자', '1/' + scale + '   ' + (info.date || '')]];
   pen.rect(bx, by, 104, 44, {w: 0.45});
   var rh = 44 / 7;
   for (var i = 0; i < rows.length; i++) {
@@ -1129,10 +1130,11 @@ function sheetPlan(E, info) {
     pen.circle(X, Y, 2.4, {w: 0.2}); pen.text(X, Y + 0.9, String(k + 1), {size: 2.3, anchor: 'middle'});
   });
   // 치수: 하단 스팬, 전체
-  for (i = 0; i < xs.length - 1; i++) v.dimH(xs[i], xs[i + 1], 0, 8, fmt(g.bay * 1000));
+  var pv = !!info.pv;   // 계약 전 미리보기: 칸별 치수·규격 주기·기초 상세 없이 전체 치수만
+  if (!pv) for (i = 0; i < xs.length - 1; i++) v.dimH(xs[i], xs[i + 1], 0, 8, fmt(g.bay * 1000));
   v.dimH(0, L, 0, 15, fmt(L));
   var ys = [0].concat(ep).concat([W]);
-  for (i = 0; i < ys.length - 1; i++) v.dimV(ys[i], ys[i + 1], 0, -8, fmt(ys[i + 1] - ys[i]));
+  if (!pv) for (i = 0; i < ys.length - 1; i++) v.dimV(ys[i], ys[i + 1], 0, -8, fmt(ys[i + 1] - ys[i]));
   v.dimV(0, W, 0, -15, fmt(W));
   // 출입문
   var sides = {front: [0, 'v'], back: [L, 'v'], left: [0, 'h'], right: [W, 'h']};
@@ -1167,6 +1169,7 @@ function sheetPlan(E, info) {
   if (!w.right || jn.right) v.text(L / 2, W + 1200, lab('right'), {size: 2.4, anchor: 'middle', c: 'accent'});
   // 방위 없음 · 주기
   var nx = AREA.x + 2, ny = SHEET.h - 50;
+  if (pv) { pen.text(nx, ny, '· 규격 ' + g.W + 'M × ' + g.L + 'M × 처마 ' + g.H + 'M   · 바닥 면적 ' + (g.W * g.L).toFixed(1) + '㎡ (' + g.py.toFixed(1) + '평)', {size: 2.4, weight: 'bold'}); return pen; }
   pen.text(nx, ny, '· 기둥: 아연PIPE Ø' + g.colDia + (g.truss ? '×2 쌍기둥(격자 @600) + 박공벽 샛기둥 Ø' + g.colDia : '') + '   총 ' + t.nCol + '개소', {size: 2.4});
   pen.text(nx, ny + 4.2, '· 베이스플레이트 ' + (t.bp || [{name: t.bpName, note: ''}]).map(function (b) { return b.name + (b.note ? '(' + b.note + ')' : ''); }).join(', ') + ' + 셋트앙카 4EA/개소 + 삼각브라켓 2EA/개소', {size: 2.4});
   pen.text(nx, ny + 8.4, '· 기둥 간격 ' + fmt(g.bay * 1000) + ' × ' + g.nBay + '스팬, 박공벽 샛기둥 ' + g.endPosts + '개소/면', {size: 2.4});
@@ -1211,7 +1214,9 @@ function sheetFront(E, info) {
   });
   // 벤츄레타
   if (+E.inp.vent) { var rx = g.roof === 'shed' ? W * 0.7 : W / 2, ry = yAt(up, rx); v.rect(rx - 350, ry, 700, 450, {w: 0.3, fill: 'bg'}); v.line(rx - 450, ry + 450, rx + 450, ry + 450, {w: 0.4}); }
-  // 지시선
+  var pv = !!info.pv;
+  // 지시선 (미리보기에는 없음)
+  if (!pv) {
   v.leader(0, H * 0.45, -12, -10, 'Ø' + g.colDia + ' 기둥' + (g.truss ? '×2 쌍기둥' : ''));
   var ms = g.ms, q = up[Math.round(up.length * 0.22)]; v.leader(q[0], q[1], -10, -12, 'Ø' + ms.up + ' 상현재');
   var q2 = lo[Math.round(lo.length * 0.78)]; v.leader(q2[0], q2[1], 12, -8, 'Ø' + ms.lo + ' 하현재');
@@ -1219,13 +1224,15 @@ function sheetFront(E, info) {
   v.leader(W * 0.62, ty, 16, 10, 'Ø' + ms.tie + ' 수평 하현재');
   v.leader(W * 0.36, (ty + yAt(lo, W * 0.36)) / 2, -16, 12, 'Ø' + ms.bv + ' 대수직 / Ø' + ms.bd + ' 대사재');
   if (t.walls.front && H > 1700) v.leader(W * 0.85, 1650, 12, 8, 'Ø42.7 띠장 @1,650');
+  }
   // 치수
   var ys = [0].concat(ep).concat([W]);
-  for (i = 0; i < ys.length - 1; i++) v.dimH(ys[i], ys[i + 1], 0, 8, fmt(ys[i + 1] - ys[i]));
+  if (!pv) for (i = 0; i < ys.length - 1; i++) v.dimH(ys[i], ys[i + 1], 0, 8, fmt(ys[i + 1] - ys[i]));
   v.dimH(0, W, 0, 15, fmt(W));
   v.dimV(0, H, W, 8, fmt(H));
   if (g.roof !== 'shed') v.dimV(H, top, W, 8, fmt(g.rise * 1000));
   v.dimV(0, top, W, 16, fmt(top));
+  if (pv) { pen.text(AREA.x + 2, SHEET.h - 50, '· 지붕 형식: ' + roofName(g.roof).replace(' 트러스', '') + '   · 처마높이 ' + fmt(H) + ' / 최고높이 ' + fmt(top), {size: 2.4}); return pen; }
   pen.text(AREA.x + 2, SHEET.h - 50, '· 지붕 형식: ' + roofName(g.roof) + '   트러스 춤 ' + fmt(d) + '   서까래 간격 830', {size: 2.4});
   pen.text(AREA.x + 2, SHEET.h - 45.8, '· 처마높이 ' + fmt(H) + ' / 최고높이 ' + fmt(top) + ' / 지붕 단면길이 ' + fmt(g.S * 1000), {size: 2.4});
   return pen;
@@ -1320,10 +1327,13 @@ function sheetSide(E, info) {
   placedDoors(E, 'left').forEach(function (p) { var dh = Math.min(p.dh, H - 200); v.rect(p.s, 0, p.dw, dh, {w: 0.4, c: 'accent', fill: 'bg'}); v.text(p.s + p.dw / 2, dh / 2, (p.d.w || 4) + 'M×' + (p.d.h || 4) + 'M', {size: 2.1, anchor: 'middle', c: 'accent'}); });
   placedDoors(E, 'right').forEach(function (p) { var dh = Math.min(p.dh, H - 200); v.rect(p.s, 0, p.dw, dh, {w: 0.3, c: 'accent', dash: '2 1'}); v.text(p.s + p.dw / 2, dh / 2, '(우측벽) ' + (p.d.w || 4) + 'M×' + (p.d.h || 4) + 'M', {size: 2.1, anchor: 'middle', c: 'accent'}); });
   if (+E.inp.vent) spread(Math.min(+E.inp.vent, 12), L, 700).forEach(function (s) { v.rect(s, top, 700, 420, {w: 0.3, fill: 'bg'}); });
+  var pv = !!info.pv;   // 미리보기: 지시선·칸별 치수 없음
+  if (!pv) {
   v.leader(xs[1] || 0, H * 0.3, -14, 16, 'Ø' + g.colDia + ' 기둥 @' + fmt(g.bay * 1000));
   v.leader(L * 0.55, H - vtH / 2, 12, -16, 'VT 트러스 Ø48.6 / Ø34');
+  }
   if (winL.length && H > 2800) v.leader(winL[0] + 750, 2650, -10, -12, '창문 1500×1000' + (windowSpots(E, 'right').length ? ' (좌 ' + winL.length + ' / 우 ' + windowSpots(E, 'right').length + ')' : ''));
-  for (i = 0; i < xs.length - 1; i++) v.dimH(xs[i], xs[i + 1], 0, 8, fmt(g.bay * 1000));
+  if (!pv) for (i = 0; i < xs.length - 1; i++) v.dimH(xs[i], xs[i + 1], 0, 8, fmt(g.bay * 1000));
   v.dimH(0, L, 0, 15, fmt(L));
   v.dimV(0, H, L, 8, fmt(H)); v.dimV(H, top, L, 8, fmt(top - H)); v.dimV(0, top, L, 16, fmt(top));
   return pen;
@@ -1600,8 +1610,34 @@ function sheetElevAll(E, info) {
   return pen;
 }
 
+// ── 계약 전 미리보기 도면 (고객 페이지·고객 발송용) ──
+// 작업 도면과 같은 구조도(평면·정면·측면)를 그리되 info.pv로 수치를 뺀다: 부재 규격·지시선, 칸별 치수(기둥 간격), 축척 표기, 기초 상세, 규격 주기.
+// 전체 치수(폭·길이·처마·최고 높이)와 출입문만 남김. 지붕틀 평면도·MT 상세도는 넣지 않는다. 시공용은 sheetsFor(E) 기본 세트.
+var PV_NOTE = '※ 계약 전 검토용 계획도입니다. 부재 규격·세부 치수·기초 상세 등 시공 도면은 계약 후 제공하며, 무단 복제·타 용도 사용을 금합니다.';
+function pvMarks(pen) {   // 워터마크 + 안내 (도면 위에 덮어 찍음)
+  for (var r = 0; r < 4; r++) for (var c = 0; c < 3; c++) {
+    pen.text(70 + c * 140 + (r % 2) * 70, 70 + r * 62, 'HYTENT · 계약 전 검토용', {size: 9, anchor: 'middle', rot: -24, c: 'wm', weight: 'bold'});
+  }
+  pen.text(AREA.x + 2, SHEET.h - 37, PV_NOTE, {size: 2.3, c: 'note'});
+}
+var PV_SHEETS = [{id: 'plan', name: '평면 구조도', fn: sheetPlan}, {id: 'front', name: '정면 구조도', fn: sheetFront}, {id: 'side', name: '측면 구조도', fn: sheetSide}];
+function previewSheets(E) {
+  var bl = bldList(E), multi = bl.length > 1, out = [], no = 0;
+  function nm() { no++; return 'P-' + String(no).padStart(2, '0'); }
+  function marked(fn) { return function (e, info) { var p = fn(e, Object.assign({}, info, {pv: true})); pvMarks(p); return p; }; }
+  if (multi) out.push({id: 'site', name: '배치도', no: nm(), fn: marked(sheetSite), E: E});
+  bl.forEach(function (b) {
+    var sub = multi ? {inp: b.inp, t: b.t, g: b.g, items: E.items, sum: E.sum} : E;
+    PV_SHEETS.forEach(function (s) { out.push({id: s.id, name: s.name + (multi ? ' · ' + b.name : ''), no: nm(), fn: marked(s.fn), E: sub, bld: multi ? b.name : ''}); });
+  });
+  out.push({id: 'iso', name: '투시도', no: nm(), fn: marked(sheetIso), E: E});
+  return out;
+}
+
 // 동이 여러 개면: 배치도 → 전체 지붕틀·입면 → 동별 구조도 → 전체 투시도
-function sheetsFor(E) {
+// mode 'preview' → 계약 전 미리보기 세트 (고객용)
+function sheetsFor(E, mode) {
+  if (mode === 'preview') return previewSheets(E);
   var bl = bldList(E), out = [], no = 0;
   function nm(k) { return 'A-' + String(k).padStart(2, '0'); }
   if (bl.length < 2) return SHEETS.map(function (s, k) { return {id: s.id, name: s.name, no: nm(k + 1), fn: s.fn, E: E}; });
@@ -1628,7 +1664,7 @@ var SHEETS = [
 
 // ── SVG 렌더 ──
 var PAL = {ink: '#1b2330', signal: '#1f6fb2', dim: '#6a7483', note: '#b0301e', accent: '#c05a12', brand: '#162041', bg: '#ffffff', tint: '#eef2f6',
-           fabric: '#dfe7ee', fabric2: '#d3dde7', fabricDark: '#c3ceda', fabricWall: 'rgba(233,239,245,0.82)', ground: '#f3f1ec', door: '#f7e6d6', glass: '#cfe3ee'};
+           fabric: '#dfe7ee', fabric2: '#d3dde7', fabricDark: '#c3ceda', fabricWall: 'rgba(233,239,245,0.82)', ground: '#f3f1ec', door: '#f7e6d6', glass: '#cfe3ee', wm: 'rgba(31,111,178,0.10)'};
 function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function toSVG(pen, opt) {
   opt = opt || {};
@@ -2059,7 +2095,7 @@ function recompute() {
 var rT; function schedule() { clearTimeout(rT); rT = setTimeout(recompute, 150); }
 
 function sheetSvg(id) {
-  var sh = D.sheetsFor(est).filter(function (s) { return s.id === id; })[0];
+  var sh = D.sheetsFor(est, 'preview').filter(function (s) { return s.id === id; })[0];   // 고객에게는 계약 전 미리보기 도면만 (부재 규격·기둥 간격 없음)
   return D.toSVG(D.render(sh, info()));
 }
 var LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/></svg>';
