@@ -141,6 +141,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .nw{white-space:nowrap}
 .hero .trust{display:inline-flex;align-items:flex-start;gap:8px;margin:12px 0 0;padding:8px 14px;border-radius:8px;background:color-mix(in srgb,var(--steel) 9%,transparent);color:var(--ink);font-size:14.5px;font-weight:600;line-height:1.5}
 .hero .trust svg{flex:none;width:18px;height:18px;margin-top:2px;fill:var(--steel);stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#sizeHint,#optHint{white-space:pre-line;line-height:1.6}
 
 [hidden]{display:none!important}
 </style>
@@ -1992,11 +1993,11 @@ var $ = function (id) { return document.getElementById(id); };
 var USE_TXT = {warehouse: '물류·자재 보관', agri: '선별장·저장고', waste: '재활용·폐기물', sports: '풋살·야구·족구', factory: '작업장·가공', canopy: '지붕만 (벽 없음)'};
 var USE_NAME = {warehouse: '일반 창고', agri: '농업시설', waste: '폐기물 처리장', sports: '체육시설', factory: '공장·작업장', canopy: '캐노피'};
 var ROOF_NAME = {arch: '라운드', gable: '박공', shed: '편경사'};
-var PRESETS = [[10, 20, 5], [12, 24, 5], [15, 30, 5], [20, 30, 6], [20, 40, 6], [30, 40, 7]];
+var PRESETS = [[10, 20, 5], [12, 24, 5], [15, 30, 5], [20, 30, 6], [20, 40, 6], [30, 40, 7], [30, 50, 7]];
 var LOCKED = {front: '정면도', side: '측면도'};
 var DRAFT = 'hytent.quote.draft';
 var FIELDS = ['client', 'contact', 'phone', 'emailId', 'emailDomain', 'emailCustom', 'when', 'floor', 'civil', 'memo'];
-function fresh() { return {use: 'warehouse', region: '경기', district: '', place: '', W: 15, L: 30, H: 5, roof: 'arch', highWind: false, doorN: 1, doorS: '4x4', window: '0', fan: '0', vent: null, fabric: null, fabColor: '진회색', roofPattern: '단일색상', step: 1, done: 0}; }
+function fresh() { return {use: 'warehouse', region: '경기', district: '', place: '', W: 15, L: 30, H: 5, roof: 'arch', highWind: false, doorN: 1, doorS: '4x4', window: '0', fan: '0', vent: null, fabric: null, fabColor: '진회색', roofPattern: '스트라이프', step: 1, done: 0}; }
 var S = fresh(), view = '3d', est = null, t3 = null, threeP = null;
 
 function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : d; }
@@ -2013,7 +2014,7 @@ function input() {
   if (!u.noWalls) for (var k = 0; k < S.doorN; k++) doors.push({w: dw, h: dh, qty: 1, pos: pos[k % 4], at: ''});
   return {use: S.use, region: S.region, district: S.district, place: S.place, W: d.W, L: d.L, H: d.H, roof: S.roof, rise: null, bay: null,
     walls: u.noWalls ? {front: false, back: false, left: false, right: false} : {front: true, back: true, left: true, right: true},
-    fabric: S.fabric || fabricAuto(), fabColor: S.fabColor || '진회색', roofPattern: S.roofPattern || '단일색상', highWind: S.highWind, doors: doors, vent: S.vent == null ? ventAuto() : +S.vent,
+    fabric: S.fabric || fabricAuto(), fabColor: S.fabColor || '진회색', roofPattern: S.roofPattern || '스트라이프', highWind: S.highWind, doors: doors, vent: S.vent == null ? ventAuto() : +S.vent,
     fan: u.noWalls ? 0 : +S.fan, window: u.noWalls ? 0 : +S.window, insul: false, gutter: 0, footing: 0, colType: 'auto'};
 }
 function where() { return [S.region, S.district, S.place].filter(Boolean).join(' '); }
@@ -2062,7 +2063,7 @@ function writeForm() {
   if (S.fabric && E.CUSTOMER_FABRICS.indexOf(S.fabric) < 0) S.fabric = null;   // 예전 저장값이 목록에 없으면 기본으로
   $('fabric').value = S.fabric || fa;
   $('fabColor').innerHTML = E.FAB_COLORS.map(function (c) { return '<option>' + c + '</option>'; }).join(''); $('fabColor').value = S.fabColor || '진회색';
-  $('roofPattern').innerHTML = E.ROOF_PATTERNS.map(function (c) { return '<option>' + c + '</option>'; }).join(''); $('roofPattern').value = S.roofPattern || '단일색상';
+  $('roofPattern').innerHTML = E.ROOF_PATTERNS.map(function (c) { return '<option>' + c + '</option>'; }).join(''); $('roofPattern').value = S.roofPattern || '스트라이프';
   var va = ventAuto(), opts = [];
   for (var n = 0; n <= 12; n++) opts.push('<option value="' + n + '">' + (n ? n + '개' : '없음') + (n === va ? ' (권장)' : '') + '</option>');
   $('vent').innerHTML = opts.join(''); $('vent').value = S.vent == null ? va : S.vent;
@@ -2111,14 +2112,17 @@ function recompute() {
   $('fTop').textContent = fmt(g.H + g.rise, 2) + ' m';
   $('fCol').textContent = g.truss ? '쌍기둥' : '외기둥';
   $('fFab').textContent = fabName(inp.fabric);
-  var h = '';   // 고객에게는 기둥 간격·트러스 열수 등 구조 수치를 보이지 않음
-  if (g.truss) h += '이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)이 필요합니다.';
-  if (inp.W > 40) h += ' 폭 40m를 넘으면 별도 구조 검토가 필요합니다.';
+  var hs = [];   // 고객에게는 기둥 간격·트러스 열수 등 구조 수치를 보이지 않음 · 안내는 한 줄씩 짧게
+  if (g.truss) hs.push('이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)으로 시공합니다.');
+  if (inp.W > 40) hs.push('폭 40m가 넘으면 별도 구조 검토가 필요합니다.');
   var windH = S.highWind && inp.H > 5;
-  if (windH) h += ' 바람이 센 곳은 처마(벽) 높이 5m 이하로 시공하는 것을 권장합니다.';
-  h = h.trim(); $('sizeHint').hidden = !h;
+  if (windH) hs.push('바람이 센 곳은 처마 높이 5m 이하를 권장합니다.');
+  var h = hs.map(function (x) { return '· ' + x; }).join('\n'); $('sizeHint').hidden = !h;
   $('sizeHint').textContent = h; $('sizeHint').className = 'hint' + (inp.W > 40 || windH ? ' warn' : '');
-  $('optHint').textContent = (S.highWind ? '바람이 센 곳은 벤츄레타 없이 시공하는 것을 권장합니다.' : '벤츄레타 권장 ' + ventAuto() + '개는 하이텐트 시공 현장들의 같은 크기 배치 기준입니다.') + ' 기본 원단: ' + fabName(fabricAuto()) + ' (난연·UV코팅·0.6T 선택 가능).' + (+S.doorS.split('x')[0] > 4 && +S.doorN ? ' 출입문은 보통 폭 4m로 시공합니다. 4m보다 넓은 문은 기둥 간격을 조정해야 해서 현장 확인 후 위치·크기를 확정합니다.' : '');
+  var os = [S.highWind ? '바람이 센 곳은 벤츄레타 없이 시공하길 권장합니다.' : '벤츄레타는 같은 크기 현장 기준으로 ' + ventAuto() + '개를 권장합니다.', '기본 원단은 ' + fabName(fabricAuto()) + '이며, 난연·UV코팅·0.6T도 고를 수 있습니다.'];
+  if (+S.doorN && +S.doorS.split('x')[0] > 4) os.push('폭 4m보다 넓은 문은 현장 확인 후 크기를 확정합니다.');
+  if (+S.doorN && +S.doorS.split('x')[1] > inp.H - 0.3) os.push('처마가 ' + inp.H + 'm라 문 높이는 약 ' + fmt(inp.H - 0.3, 1) + 'm로 맞춰 드립니다.');
+  $('optHint').textContent = os.map(function (x) { return '· ' + x; }).join('\n');
   summaries(); renderView(); save();
 }
 var rT; function schedule() { clearTimeout(rT); rT = setTimeout(recompute, 150); }
@@ -2253,7 +2257,7 @@ function bind() {
   $('uses').addEventListener('click', function (e) {
     var b = e.target.closest('[data-u]'); if (!b) return; var changed = S.use !== b.dataset.u; S.use = b.dataset.u;
     if (changed) {
-      var u = E.USES[S.use]; S.H = S.use === 'sports' ? 6 : 5; S.window = String(u.window || 0); S.fan = '0';   // 환풍기 기본 없음 S.fabric = null; S.vent = null;
+      var u = E.USES[S.use]; S.H = S.use === 'sports' ? 6 : 5; S.window = '0'; S.fan = '0'; S.fabric = null; S.vent = null;   // 창문·환풍기 기본 없음
       if (u.noWalls) S.doorN = 0; else if (!+S.doorN) S.doorN = 1;
     }
     writeForm(); recompute(); goStep(Math.max(2, S.step === 1 ? 2 : S.step));
