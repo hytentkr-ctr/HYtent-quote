@@ -2111,11 +2111,12 @@ function recompute() {
   $('fTop').textContent = fmt(g.H + g.rise, 2) + ' m';
   $('fCol').textContent = g.truss ? '쌍기둥' : '외기둥';
   $('fFab').textContent = fabName(inp.fabric);
-  var h = '기둥 간격 약 ' + fmt(g.bay, 2) + 'm, 메인 트러스 ' + g.F + '열, 지붕 높이 ' + fmt(g.rise, 2) + 'm.';
-  if (g.truss) h += ' 이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)으로 계획합니다.';
+  var h = '';   // 고객에게는 기둥 간격·트러스 열수 등 구조 수치를 보이지 않음
+  if (g.truss) h += '이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)이 필요합니다.';
   if (inp.W > 40) h += ' 폭 40m를 넘으면 별도 구조 검토가 필요합니다.';
   var windH = S.highWind && inp.H > 5;
   if (windH) h += ' 바람이 센 곳은 처마(벽) 높이 5m 이하로 시공하는 것을 권장합니다.';
+  h = h.trim(); $('sizeHint').hidden = !h;
   $('sizeHint').textContent = h; $('sizeHint').className = 'hint' + (inp.W > 40 || windH ? ' warn' : '');
   $('optHint').textContent = (S.highWind ? '바람이 센 곳은 벤츄레타 없이 시공하는 것을 권장합니다.' : '벤츄레타 권장 ' + ventAuto() + '개는 하이텐트 시공 현장들의 같은 크기 배치 기준입니다.') + ' 기본 원단: ' + fabName(fabricAuto()) + ' (난연·UV코팅·0.6T 선택 가능).' + (+S.doorS.split('x')[0] > 4 && +S.doorN ? ' 출입문은 보통 폭 4m로 시공합니다. 4m보다 넓은 문은 기둥 간격을 조정해야 해서 현장 확인 후 위치·크기를 확정합니다.' : '');
   summaries(); renderView(); save();
