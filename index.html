@@ -342,7 +342,7 @@ var DEFAULT_PRICES = {
   'rail': 0, 'vent': 0, 'fan': 0, 'window': 0,
   'gutter': 0, 'gutterLabor': 0,
   'weld': 0, 'disc': 0, 'paint': 0, 'misc': 0, 'angle': 0,
-  'band05': 0, 'band06': 0, 'rope': 0,   // 띠장(M): 원단 0.5T급 / 0.6T급 'insul': 0,
+  'band05': 0, 'band06': 0, 'rope': 0, 'insul': 0,   // 띠장(M): 원단 0.5T급 / 0.6T급
   'footing': 0,  // 독립기초 신설(개소) - 가정값, 확인 필요
   // 토목 (2025~2026 하이텐트 토목 견적: 이천 79평·케이알 97평·남원 136평·덕평 줄기초·하남 305평)
   'civ_conc': 0,   // 레미콘 25-240-15 (m³)
@@ -743,13 +743,13 @@ function buildingsOf(inp) {
 }
 
 // 토목 물량: A = 바닥면적(㎡), P = 외곽 둘레(m), nc = 기둥 개소
-var CIVIL = {none: '없음', pad: '독립기초', strip: '줄기초', slab: '바닥 콘크리트 타설 150T', tbd: '현장 확인 후 결정'};
+var CIVIL = {none: '없음', pad: '독립기초', strip: '줄기초', slab: '바닥 콘크리트 타설 250T', tbd: '현장 확인 후 결정'};
 function civilList(kind, A, P, nc) {
 var L = [], r = Math.round, mx = Math.max, c = Math.ceil;
 if (kind === 'slab') {
-  var m3 = c(A * 0.15 * 1.03);
+  var m3 = c(A * 0.25 * 1.03);   // 바닥 슬래브 두께 250T (2026-10-12, 이전 150T)
   L.push(['와이어메쉬', '6번', c(A / 1.7), 'ea', 'mat', 'civ_mesh'],
-    ['기초콘크리트타설', '25-240-15 (150T)', m3, 'm³', 'mat', 'civ_conc'],
+    ['기초콘크리트타설', '25-240-15 (250T)', m3, 'm³', 'mat', 'civ_conc'],
     ['상승각외 기타자재', '', 1, '식', 'mat', 'civ_misc'],
     ['유로폼(거푸집)', '', 1, '식', 'mat', 'civ_form'],
     ['컷팅', '줄눈', 1, '식', 'lab', 'civ_cut'],
@@ -1128,6 +1128,25 @@ function windowSpots(E, side) {
   return out.filter(function (x, k) { return out.indexOf(x) === k; });
 }
 
+// 벽면 환풍기 490×490: 좌측 벽에 절반(올림), 우측에 나머지. 장변 벽 위쪽(처마 아래 약 1.35m)에,
+// 출입문 칸은 피하고 가능하면 창문 없는 칸에 고르게 → 중심 x(mm) 배열. 높이는 fanY(g)
+function fanY(g) { return Math.max(900, g.H * 1000 - 1350); }
+function fanSpots(E, side) {
+  var g = E.g, n = +E.inp.fan || 0, cnt = side === 'left' ? Math.ceil(n / 2) : Math.floor(n / 2);
+  if (!cnt || !E.t.walls[side]) return [];
+  var doors = placedDoors(E, side), wins = windowSpots(E, side), all = [], free = [], i;
+  for (i = 0; i < g.nBay; i++) {
+    var c = (i + 0.5) * g.bay * 1000;
+    if (doors.some(function (p) { return c + 400 > p.s && c - 400 < p.s + p.dw; })) continue;
+    all.push(c); if (!wins.some(function (s) { return c + 400 > s && c - 400 < s + 1500; })) free.push(c);
+  }
+  var bays = free.length >= cnt ? free : all;
+  if (!bays.length) return [];
+  var out = [], step = bays.length / cnt;
+  for (i = 0; i < cnt; i++) out.push(bays[Math.min(bays.length - 1, Math.floor(step * (i + 0.5)))]);
+  return out.filter(function (x, k) { return out.indexOf(x) === k; });
+}
+
 // ── ① 평면 · 기둥 배치도 ──
 function sheetPlan(E, info) {
   var g = E.g, t = E.t, pen = new Pen(), L = g.L * 1000, W = g.W * 1000;
@@ -1342,6 +1361,9 @@ function sheetSide(E, info) {
   // 창문 / 도어 (좌측 벽 기준, 우측 벽 문은 점선)
   var winL = windowSpots(E, 'left');
   if (H > 2800) winL.forEach(function (s) { v.rect(s, 1650, 1500, 1000, {w: 0.35, c: 'accent', fill: 'bg'}); v.line(s + 750, 1650, s + 750, 2650, {w: 0.2, c: 'accent'}); });
+  var fy = fanY(g), fanL = fanSpots(E, 'left');
+  fanL.forEach(function (c) { v.rect(c - 245, fy - 245, 490, 490, {w: 0.35, c: 'accent', fill: 'bg'}); v.line(c - 245, fy - 245, c + 245, fy + 245, {w: 0.15, c: 'accent'}); v.line(c - 245, fy + 245, c + 245, fy - 245, {w: 0.15, c: 'accent'}); });
+  fanSpots(E, 'right').forEach(function (c) { v.rect(c - 245, fy - 245, 490, 490, {w: 0.25, c: 'accent', dash: '1.5 1'}); });
   placedDoors(E, 'left').forEach(function (p) { var dh = Math.min(p.dh, H - 200); v.rect(p.s, 0, p.dw, dh, {w: 0.4, c: 'accent', fill: 'bg'}); v.text(p.s + p.dw / 2, dh / 2, (p.d.w || 4) + 'M×' + (p.d.h || 4) + 'M', {size: 2.1, anchor: 'middle', c: 'accent'}); });
   placedDoors(E, 'right').forEach(function (p) { var dh = Math.min(p.dh, H - 200); v.rect(p.s, 0, p.dw, dh, {w: 0.3, c: 'accent', dash: '2 1'}); v.text(p.s + p.dw / 2, dh / 2, '(우측벽) ' + (p.d.w || 4) + 'M×' + (p.d.h || 4) + 'M', {size: 2.1, anchor: 'middle', c: 'accent'}); });
   if (+E.inp.vent) spread(Math.min(+E.inp.vent, 12), L, 700).forEach(function (s) { v.rect(s, top, 700, 420, {w: 0.3, fill: 'bg'}); });
@@ -1350,6 +1372,7 @@ function sheetSide(E, info) {
   v.leader(xs[1] || 0, H * 0.3, -14, 16, 'Ø' + g.colDia + ' 기둥 @' + fmt(g.bay * 1000));
   v.leader(L * 0.55, H - vtH / 2, 12, -16, 'VT 트러스 Ø48.6 / Ø34');
   }
+  if (fanL.length && !pv) v.leader(fanL[0], fy + 245, 10, -10, '벽면환풍기 490×490' + (fanSpots(E, 'right').length ? ' (좌 ' + fanL.length + ' / 우 ' + fanSpots(E, 'right').length + ')' : ''));
   if (winL.length && H > 2800) v.leader(winL[0] + 750, 2650, -10, -12, '창문 1500×1000' + (windowSpots(E, 'right').length ? ' (좌 ' + winL.length + ' / 우 ' + windowSpots(E, 'right').length + ')' : ''));
   if (!pv) for (i = 0; i < xs.length - 1; i++) v.dimH(xs[i], xs[i + 1], 0, 8, fmt(g.bay * 1000));
   v.dimH(0, L, 0, 15, fmt(L));
@@ -1428,6 +1451,7 @@ function isoOne(pen, E, Q, n, fz) {
       pen.poly([Q(s, 1650, 0), Q(s, 2650, 0), Q(s + 1500, 2650, 0), Q(s + 1500, 1650, 0), Q(s, 1650, 0)], {w: 0.3, fill: 'glass', c: 'accent'});
       var m1 = Q(s + 750, 1650, 0), m2 = Q(s + 750, 2650, 0); pen.line(m1[0], m1[1], m2[0], m2[1], {w: 0.2, c: 'accent'});
     });
+    var fy0 = fanY(g); fanSpots(E, 'left').forEach(function (c) { pen.poly([Q(c - 245, fy0 - 245, 0), Q(c - 245, fy0 + 245, 0), Q(c + 245, fy0 + 245, 0), Q(c + 245, fy0 - 245, 0), Q(c - 245, fy0 - 245, 0)], {w: 0.3, fill: 'ink', c: 'ink'}); });
   }
   if (E.inp.extendAt !== 'front') pen.poly(prof.map(function (q) { return Q(0, q[1], q[0]); }), {w: 0.5});
   var e1 = Q(0, hAt(zN), zN), e2 = Q(L, hAt(zN), zN); pen.line(e1[0], e1[1], e2[0], e2[1], {w: 0.45});
@@ -1737,7 +1761,7 @@ function toDXF(pen) {
   return L.join('\r\n');
 }
 
-var API = {SHEETS: SHEETS, sheetsFor: sheetsFor, render: render, bldList: bldList, toPlan: toPlan, toSVG: toSVG, toDXF: toDXF, SHEET: SHEET, roofPts: roofPts, placedDoors: placedDoors, windowSpots: windowSpots, yAt: yAt};
+var API = {SHEETS: SHEETS, sheetsFor: sheetsFor, render: render, bldList: bldList, toPlan: toPlan, toSVG: toSVG, toDXF: toDXF, SHEET: SHEET, roofPts: roofPts, placedDoors: placedDoors, windowSpots: windowSpots, fanSpots: fanSpots, fanY: fanY, yAt: yAt};
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TentDraw = API;
 })(this);
 
@@ -1960,6 +1984,14 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
   if (H > 2.8) ['left', 'right'].forEach(function (sd) {
     var zz = sd === 'left' ? -e : W + e;
     Dr.windowSpots(E, sd).forEach(function (s0) { var s = s0 / 1000; quad([s, 1.65, zz], [s + 1.5, 1.65, zz], [s + 1.5, 2.65, zz], [s, 2.65, zz], matWin); });
+  });
+  // 벽면 환풍기 490×490 (어두운 사각 + 안쪽 원형 날개 자리)
+  var matFan = new T.MeshStandardMaterial({color: 0x3a434d, metalness: 0.4, roughness: 0.5, side: T.DoubleSide}), matFanIn = new T.MeshStandardMaterial({color: 0x8a96a3, metalness: 0.5, roughness: 0.4, side: T.DoubleSide});
+  var fy = Dr.fanY(g) / 1000;
+  ['left', 'right'].forEach(function (sd) {
+    var zz = sd === 'left' ? -e * 1.5 : W + e * 1.5, zi = sd === 'left' ? -e * 2 : W + e * 2;
+    Dr.fanSpots(E, sd).forEach(function (c0) { var c = c0 / 1000; quad([c - 0.245, fy - 0.245, zz], [c + 0.245, fy - 0.245, zz], [c + 0.245, fy + 0.245, zz], [c - 0.245, fy + 0.245, zz], matFan);
+      var disc = new T.Mesh(new T.CircleGeometry(0.19, 20), matFanIn); disc.position.set(c, fy, zi); grp.add(disc); });
   });
   var nv = +E.inp.vent || 0;
   if (nv) {
