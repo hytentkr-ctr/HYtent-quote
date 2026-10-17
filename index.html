@@ -2159,6 +2159,20 @@ function recompute() {
 }
 var rT; function schedule() { clearTimeout(rT); rT = setTimeout(recompute, 150); }
 
+// ───────── 구글 광고 중간 전환: 폭·길이를 처음 열었을 때 값과 다르게 바꾸면 한 번만 (개인정보 없이 평수 구간만) ─────────
+var ENG0 = null, engaged = false;   // ENG0: 페이지를 열고 임시 저장까지 복원한 직후의 폭·길이
+function pyBand(py) { return py < 50 ? '~50' : py < 100 ? '50-100' : py < 200 ? '100-200' : py < 400 ? '200-400' : '400+'; }
+function engage() {   // 폭·길이 확정(change)·크기 버튼에서만 부름. 불러오기·복원 때는 부르지 않음
+  var d = dims();
+  if (engaged || !ENG0 || (d.W === ENG0.W && d.L === ENG0.L)) return;
+  engaged = true;
+  var band = pyBand(Math.round(d.W * d.L / 3.3058));
+  try {
+    if (XF) tellHost({hytent: 'engaged', py_band: band});
+    (HOST.dataLayer = HOST.dataLayer || []).push({event: 'hytent_sim_engaged', sim_py_band: band});
+  } catch (e) {}
+}
+
 function sheetSvg(id) {
   var sh = D.sheetsFor(est, 'preview').filter(function (s) { return s.id === id; })[0];   // 고객에게는 계약 전 미리보기 도면만 (부재 규격·기둥 간격 없음)
   return D.toSVG(D.render(sh, info()));
@@ -2295,7 +2309,7 @@ function bind() {
     writeForm(); recompute(); goStep(Math.max(2, S.step === 1 ? 2 : S.step));
   });
   $('roof').addEventListener('click', function (e) { var b = e.target.closest('[data-v]'); if (!b) return; S.roof = b.dataset.v; writeForm(); recompute(); });
-  $('presets').addEventListener('click', function (e) { var b = e.target.closest('[data-p]'); if (!b) return; var p = b.dataset.p.split(','); S.W = +p[0]; S.L = +p[1]; S.H = Math.max(S.use === 'sports' ? 6 : 5, +p[2]); S.vent = null; writeForm(); recompute(); });
+  $('presets').addEventListener('click', function (e) { var b = e.target.closest('[data-p]'); if (!b) return; var p = b.dataset.p.split(','); S.W = +p[0]; S.L = +p[1]; S.H = Math.max(S.use === 'sports' ? 6 : 5, +p[2]); S.vent = null; writeForm(); recompute(); engage(); });
   $('form').addEventListener('input', function (e) {
     var t = e.target, k = t.id;
     if (k === 'region') { S.region = t.value; S.district = ''; fillDistricts(); schedule(); }
@@ -2308,7 +2322,7 @@ function bind() {
     else if (k === 'emailDomain') { mailUi(); save(); }
     else if (FIELDS.indexOf(k) >= 0) save();
   });
-  $('form').addEventListener('change', function (e) { var k = e.target.id; if (k === 'W' || k === 'L' || k === 'H') { S[k] = clamp(num(e.target.value, S[k]), +e.target.min, +e.target.max); e.target.value = S[k]; recompute(); } if (k === 'doorN') { S.doorN = clamp(Math.round(num(e.target.value, 0)), 0, 10); e.target.value = S.doorN; recompute(); } });
+  $('form').addEventListener('change', function (e) { var k = e.target.id; if (k === 'W' || k === 'L' || k === 'H') { S[k] = clamp(num(e.target.value, S[k]), +e.target.min, +e.target.max); e.target.value = S[k]; recompute(); if (k !== 'H') engage(); } if (k === 'doorN') { S.doorN = clamp(Math.round(num(e.target.value, 0)), 0, 10); e.target.value = S.doorN; recompute(); } });
   $('form').addEventListener('click', function (e) {
     var nx = e.target.closest('[data-next]'); if (nx) { goStep(+nx.dataset.next); return; }
     var hd = e.target.closest('.step.closed .sh'); if (hd) { goStep(+hd.parentNode.dataset.step, false); }
@@ -2336,6 +2350,7 @@ function writeFormLite() { var va = ventAuto(); Array.prototype.forEach.call($('
 
 buildStatic();
 if (load()) $('restored').hidden = false;
+ENG0 = dims();
 mailUi(); writeForm(); bind(); recompute(); steps();
 })();
 
