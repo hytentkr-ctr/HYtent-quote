@@ -142,6 +142,8 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .hero .trust{display:inline-flex;align-items:flex-start;gap:8px;margin:12px 0 0;padding:8px 14px;border-radius:8px;background:color-mix(in srgb,var(--steel) 9%,transparent);color:var(--ink);font-size:14.5px;font-weight:600;line-height:1.5}
 .hero .trust svg{flex:none;width:18px;height:18px;margin-top:2px;fill:var(--steel);stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #sizeHint,#optHint{white-space:pre-line;line-height:1.6}
+.ferr{color:var(--warn);font-size:12.5px;margin:4px 0 0}
+#phone[aria-invalid="true"]{border-color:var(--warn)}
 
 [hidden]{display:none!important}
 </style>
@@ -265,7 +267,8 @@ body{font-size:15.5px}
       <label class="f">회사명<input id="client" autocomplete="organization" placeholder="회사명을 입력해주세요"></label>
       <label class="f">담당자 성함 *<input id="contact" autocomplete="name" placeholder="담당자 성함을 입력해주세요" required></label>
     </div>
-    <label class="f" style="margin-top:10px">연락처 *<input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required></label>
+    <label class="f" style="margin-top:10px">연락처 *<input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required aria-describedby="phoneErr"></label>
+    <p class="ferr" id="phoneErr" hidden>전화번호 자리수를 확인해주세요. (예: 010-1234-5678)</p>
     <div class="f mail" style="margin-top:10px" role="group" aria-labelledby="mailLbl">
       <span id="mailLbl">견적서 받으실 이메일 *</span>
       <div class="mailrow">
@@ -881,14 +884,14 @@ function buildProject(inp, prices, ov) {
     if (it.name) lastName = it.name;
     it.key = (it.bld ? it.bld + '|' : '') + it.sec + '|' + lastName + '|' + it.spec;
     it.auto = {qty: it.qty, price: it.price};
-    var cm = it.kind === 'lab' && /^(\d+)명 (\d+)일$/.exec(it.spec);   // 제작·설치 인력: 인원 × 일수
-    if (cm) it.crew = {n: +cm[1], d: +cm[2]};
+    var cm = /^(\d+)(명|대) (\d+(?:\.\d+)?)일$/.exec(it.spec);   // 제작·설치 인력(인원×일수), 리프트 렌탈(대수×일수)
+    if (cm) it.crew = {n: +cm[1], u: cm[2], d: +cm[3]};
     var o = ov[it.key];
     if (o) {
       if (it.crew && ((o.n != null && o.n !== '') || (o.d != null && o.d !== ''))) {   // 인원·일수를 고치면 수량(인)과 규격 글자를 같이 바꿈
         if (o.n != null && o.n !== '') it.crew.n = +o.n;
         if (o.d != null && o.d !== '') it.crew.d = +o.d;
-        it.qty = it.crew.n * it.crew.d; it.spec = it.crew.n + '명 ' + it.crew.d + '일';
+        it.qty = it.crew.n * it.crew.d; it.spec = it.crew.n + it.crew.u + ' ' + it.crew.d + '일';
       }
       if (o.qty != null && o.qty !== '') it.qty = +o.qty;
       if (o.price != null && o.price !== '') it.price = +o.price;
@@ -2254,10 +2257,19 @@ function email() {
   if (id.indexOf('@') > 0) return id;   // 아이디 칸에 전체 주소를 넣은 경우도 받음
   return id && dom ? id + '@' + dom : '';
 }
+// 전화번호 자리수 확인: 휴대폰 010은 11자리, 그 밖의 01x·지역번호는 10~11자리, 서울 02는 9~10자리, 070 11자리, 050x 11~12자리, 대표번호(1588 등) 8자리
+function phoneOk(v) {
+  var d = String(v || '').replace(/\D/g, '');
+  return /^010\d{8}$/.test(d) || /^01[16789]\d{7,8}$/.test(d) || /^02\d{7,8}$/.test(d) || /^0[3-6][1-5]\d{7,8}$/.test(d) ||
+    /^070\d{8}$/.test(d) || /^050\d{8,9}$/.test(d) || /^1[5-9]\d{6}$/.test(d);
+}
+var PHONE_MSG = '전화번호 자리수를 확인해주세요. (예: 010-1234-5678)';
+function phoneHint(show) { var ok = phoneOk($('phone').value), bad = show && !!$('phone').value.trim() && !ok; $('phoneErr').hidden = !bad; $('phone').setAttribute('aria-invalid', bad ? 'true' : 'false'); return ok; }
 function validate() {
   var bad = null;
   if (!$('contact').value.trim()) bad = ['contact', '담당자 성함을 적어주세요.'];
-  else if ($('phone').value.replace(/\D/g, '').length < 9) bad = ['phone', '연락 가능한 전화번호를 적어주세요.'];
+  else if (!$('phone').value.trim()) bad = ['phone', '연락 가능한 전화번호를 적어주세요.'];
+  else if (!phoneOk($('phone').value)) { bad = ['phone', PHONE_MSG]; phoneHint(true); }
   else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email())) bad = [$('emailId').value.trim() && !$('emailDomain').value ? 'emailCustom' : 'emailId', '견적서를 받으실 이메일 주소를 확인해주세요. 아이디를 넣고 메일 서비스를 고르거나, 직접 입력을 선택해 주소 뒷부분을 적어주세요.'];
   else if (!$('agree').checked) bad = ['agree', '개인정보 수집·이용에 동의해주셔야 요청을 보낼 수 있습니다.'];
   $('err').hidden = !bad; if (bad) { $('err').textContent = bad[1]; $(bad[0]).focus(); }
@@ -2330,10 +2342,14 @@ function bind() {
   $('form').addEventListener('submit', send);
   $('phone').addEventListener('blur', function () {   // 01012345678 → 010-1234-5678
     var d = this.value.replace(/\D/g, '');
+    if (!phoneOk(d)) { phoneHint(true); save(); return; }   // 자리수가 틀리면 고객이 쓴 그대로 두고 안내만 (모양을 바꾸면 틀린 게 안 보임)
     if (/^02\d{7,8}$/.test(d)) this.value = d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
     else if (/^0\d{9,10}$/.test(d)) this.value = d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    else if (/^1[5-9]\d{6}$/.test(d)) this.value = d.replace(/^(\d{4})(\d{4})$/, '$1-$2');
+    phoneHint(true);   // 자리가 모자라거나 넘치면 칸 바로 아래에 안내
     save();
   });
+  $('phone').addEventListener('input', function () { if (!$('phoneErr').hidden) phoneHint(true); });   // 고치는 중에 맞으면 안내를 바로 지움
   document.querySelector('.pv-tabs').addEventListener('click', function (e) { var b = e.target.closest('[role=tab]'); if (!b) return; view = b.dataset.v; renderView(); });
   $('stage').addEventListener('click', function (e) { if (e.target.closest('#unlock')) { S.step = 1; steps(); scrollTo(document.querySelector('.step[data-step="1"]')); var f = document.querySelector('.use[aria-pressed="true"]') || document.querySelector('.use'); if (f) f.focus({preventScroll: true}); } });
   $('savePng').addEventListener('click', savePng);
