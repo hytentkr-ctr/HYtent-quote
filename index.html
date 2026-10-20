@@ -206,7 +206,7 @@ body{font-size:15.5px}
     <div class="body">
       <p class="hint" id="areaText" style="margin:0 0 8px"></p>
       <div class="row">
-        <label class="f">폭 (가로)<span class="unit"><input type="number" id="W" min="4" max="50" step="0.5" inputmode="decimal"><i>m</i></span></label>
+        <label class="f">폭 (가로)<span class="unit"><input type="number" id="W" min="4" max="120" step="0.5" inputmode="decimal"><i>m</i></span></label>
         <label class="f">길이 (세로)<span class="unit"><input type="number" id="L" min="4" max="150" step="0.5" inputmode="decimal"><i>m</i></span></label>
         <label class="f">처마 높이<span class="unit"><input type="number" id="H" min="2.5" max="15" step="0.5" inputmode="decimal"><i>m</i></span></label>
       </div>
@@ -570,7 +570,7 @@ function takeoff(inp) {
   function addBend(d, m) { bendLen[d] = (bendLen[d] || 0) + m; }
 
   // 1) 기둥 (+ 박공벽 샛기둥)
-  var cs2 = inp.leanto ? 1 : 2;   // 달개 지붕: 높은 쪽은 본동 기둥에 매달림 → 낮은 쪽 기둥열만
+  var cs2 = inp.leanto || inp.shareCol ? 1 : 2;   // 달개 지붕: 높은 쪽은 본동 기둥에 매달림 / 연동: 붙는 쪽 기둥열을 앞 동과 공유 → 기둥열 1줄만
   // 길이 연장: 이어지는 끝은 박공벽이 없어 샛기둥 생략(openEnds), 붙는 동은 접합 프레임을 본동과 공유(dropEnd)
   var oe = Math.min(2, +inp.openEnds || 0), de = inp.dropEnd ? 1 : 0, Fc = g.F - de, ne = 2 - oe;
   var nCol = cs2 * Fc + ne * g.endPosts;
@@ -738,6 +738,31 @@ function layoutBuildings(bl) {
   return R;
 }
 
+// 넓은 폭: 40m 이상이면 같은 폭 여러 동을 장변끼리 붙인 연동 구조(가운데 벽 없이 기둥만 + 골 물받이)로 계획
+//  40m 이상 → 2동, 한 동은 40m 이하가 되도록 80m 초과는 3동 이상 (40m=20×2, 80m=40×2, 100m=33.3×3)
+var MAX_SPAN = 40;
+function spanCount(W) { W = +W || 0; return W >= MAX_SPAN ? Math.max(2, Math.ceil(W / MAX_SPAN - 1e-9)) : 1; }
+function splitSpans(b) {
+  var W = +b.W || 10, n = spanCount(W);
+  if (n <= 1) return [b];
+  var w = Math.round(W / n * 10) / 10, out = [], k;
+  var share = function (v, i) { v = +v || 0; return Math.floor(v / n) + (i < v % n ? 1 : 0); };   // 개수를 동마다 나눔 (합은 그대로)
+  for (k = 0; k < n; k++) {
+    var c = JSON.parse(JSON.stringify(b)), last = k === n - 1;
+    c.name = String.fromCharCode(65 + k) + '동';
+    c.W = last ? Math.round((W - w * (n - 1)) * 10) / 10 : w;
+    // 바깥 벽만 있음: 첫 동 좌측, 마지막 동 우측. 앞·뒤 박공벽은 모든 동
+    c.walls = Object.assign({front: true, back: true, left: true, right: true}, b.walls || {});
+    // 출입문: 앞·뒤 문은 동마다 고르게, 좌측 문은 첫 동, 우측 문은 마지막 동
+    var fb = (b.doors || []).filter(function (d) { return (d.pos || 'front') === 'front' || d.pos === 'back'; });
+    c.doors = fb.filter(function (d, j) { return j % n === k; }).concat((b.doors || []).filter(function (d) { return (d.pos === 'left' && k === 0) || (d.pos === 'right' && last); }));
+    c.vent = share(b.vent, k); c.fan = share(b.fan, k); c.window = share(b.window, k); c.gutter = share(b.gutter, k); c.footing = share(b.footing, k);
+    if (k) c.attach = {to: k - 1, side: 'right', rot: 0, offset: 0, mode: 'attach', span: true}; else delete c.attach;
+    out.push(c);
+  }
+  return out;
+}
+
 var BLD_FIELDS = ['name', 'W', 'L', 'H', 'roof', 'colType', 'rise', 'bay', 'walls', 'doors', 'vent', 'fan', 'window', 'gutter', 'footing', 'insul', 'attach'];
 function buildingsOf(inp) {
   if (inp.buildings && inp.buildings.length) return inp.buildings;
@@ -817,6 +842,7 @@ function buildProject(inp, prices, ov) {
     var st = Math.max(a0, b0);
     cuts[pi][ps] = {len: ovl, h: Math.min(hp, hc), s: st - a0};
     if (ovl >= (b1 - b0) - 0.1) { wallsOff[i][cs] = true; if (isEnd(cs) && hc <= hp + 0.01 && mode !== 'extend') shEnd[i] = (shEnd[i] || 0) + 1; } else cuts[i][cs] = {len: ovl, h: hc, s: st - b0};
+    if (at.span && geo === 'long' && mode === 'separate' && Math.abs(hc - hp) < 0.05 && ovl >= (b1 - b0) - 0.1 && ovl >= (a1 - a0) - 0.1) { over[i] = Object.assign(over[i] || {}, {shareCol: true}); wallsOff[pi][ps] = true; delete cuts[pi][ps]; }   // 연동: 가운데 벽 없이(양쪽 동 모두) 기둥 1줄 공유
     if (mode === 'extend') { wallsOff[pi][ps] = true; delete cuts[pi][ps]; over[i] = Object.assign(over[i] || {}, {extendAt: cs, dropEnd: true}); oEnds[i] = (oEnds[i] || 0) + 1; oEnds[pi] = (oEnds[pi] || 0) + 1; shEnd[pi] = (shEnd[pi] || 0) + 1; }
     var kind = mode === 'extend' ? 'extend' : mode === 'leanto' ? 'leanto' : geo === 'end' ? 'step' : geo === 'long' ? 'valley' : 'eave';
     joins.push({a: pi, b: i, len: ovl, side: side, s: st, mode: mode, auto: auto, want: want, warn: warn, kind: kind, ps: ps, cs: cs});
@@ -953,7 +979,7 @@ function numToKorean(n) {
 
 var FAB_COLORS = ['진회색', '연회색', '녹색', '흰색'], ROOF_PATTERNS = ['단일색상', '스트라이프'];   // 원단 색상·지붕 패턴 (금액 영향 없음)
 var CUSTOMER_FABRICS = ['fab_tarp04', 'fab_soltop05', 'fab_soltop05fr', 'fab_soltop05uv', 'fab_soltop06', 'fab_soltop06fr', 'fab_soltop06uv'];   // 고객 페이지 선택지 (기본 졸탑 0.5T)
-var API = {FAB_COLORS: FAB_COLORS, ROOF_PATTERNS: ROOF_PATTERNS, CUSTOMER_FABRICS: CUSTOMER_FABRICS, CIVIL: CIVIL, DISTRICTS: DISTRICTS, defaultVent: defaultVent, colRule: colRule, mtFrame: mtFrame, memberSpec: memberSpec, defaultRise: defaultRise, DEFAULT_PRICES: DEFAULT_PRICES, PRICE_META: PRICE_META, FABRICS: FABRICS, REGIONS: REGIONS, USES: USES,
+var API = {MAX_SPAN: MAX_SPAN, spanCount: spanCount, splitSpans: splitSpans, FAB_COLORS: FAB_COLORS, ROOF_PATTERNS: ROOF_PATTERNS, CUSTOMER_FABRICS: CUSTOMER_FABRICS, CIVIL: CIVIL, DISTRICTS: DISTRICTS, defaultVent: defaultVent, colRule: colRule, mtFrame: mtFrame, memberSpec: memberSpec, defaultRise: defaultRise, DEFAULT_PRICES: DEFAULT_PRICES, PRICE_META: PRICE_META, FABRICS: FABRICS, REGIONS: REGIONS, USES: USES,
            ROOFS: ROOFS, COEF: COEF, geometry: geometry, takeoff: takeoff, buildEstimate: buildEstimate, buildProject: buildProject, layoutBuildings: layoutBuildings, buildingsOf: buildingsOf, planToLocal: planToLocal, numToKorean: numToKorean};
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TentEngine = API;
 })(this);
@@ -2038,7 +2064,7 @@ var S = fresh(), view = '3d', est = null, t3 = null, threeP = null;
 function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : d; }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function fmt(n, d) { return n.toLocaleString('ko-KR', {maximumFractionDigits: d == null ? 1 : d}); }
-function dims() { return {W: clamp(num(S.W, 15), 4, 50), L: clamp(num(S.L, 30), 4, 150), H: clamp(num(S.H, 5), 2.5, 15)}; }
+function dims() { return {W: clamp(num(S.W, 15), 4, 120), L: clamp(num(S.L, 30), 4, 150), H: clamp(num(S.H, 5), 2.5, 15)}; }
 function ventAuto() { if (S.highWind) return 0; var d = dims(); return E.defaultVent(d.W, d.L, S.use); }   // 강풍 지역: 벤츄레타 없이 권장
 function fabricAuto() { return 'fab_soltop05'; }   // 고객 페이지 기본 원단: 졸탑 0.5T (모든 용도)
 function fabName(k) { return (E.FABRICS[k] || '').replace('원단', '').replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim(); }
@@ -2047,11 +2073,17 @@ function input() {
   var u = E.USES[S.use] || E.USES.warehouse, d = dims();
   var ds = S.doorS.split('x'), dw = +ds[0], dh = Math.min(+ds[1], d.H - 0.3), pos = ['front', 'back', 'left', 'right'], doors = [];
   if (!u.noWalls) for (var k = 0; k < S.doorN; k++) doors.push({w: dw, h: dh, qty: 1, pos: pos[k % 4], at: ''});
-  return {use: S.use, region: S.region, district: S.district, place: S.place, W: d.W, L: d.L, H: d.H, roof: S.roof, rise: null, bay: null,
+  var inp = {use: S.use, region: S.region, district: S.district, place: S.place, W: d.W, L: d.L, H: d.H, roof: S.roof, rise: null, bay: null,
     walls: u.noWalls ? {front: false, back: false, left: false, right: false} : {front: true, back: true, left: true, right: true},
     fabric: S.fabric || fabricAuto(), fabColor: S.fabColor || '진회색', roofPattern: S.roofPattern || '스트라이프', highWind: S.highWind, doors: doors, vent: S.vent == null ? ventAuto() : +S.vent,
     fan: u.noWalls ? 0 : +S.fan, window: u.noWalls ? 0 : +S.window, insul: false, gutter: 0, footing: 0, colType: 'auto'};
+  if (E.spanCount(d.W) > 1) {   // 폭 40m 이상 → 같은 폭 여러 동을 붙인 연동 구조 (가운데 벽 없이 기둥만)
+    var b = {}; ['W', 'L', 'H', 'roof', 'rise', 'bay', 'walls', 'doors', 'vent', 'fan', 'window', 'gutter', 'footing', 'insul', 'colType'].forEach(function (k) { b[k] = inp[k]; });
+    inp.buildings = E.splitSpans(b);
+  }
+  return inp;
 }
+function spanText(inp) { var bl = inp.buildings; return bl && bl.length > 1 ? bl.length + '동 연동 (각 폭 ' + bl[0].W + 'm)' : ''; }
 function where() { return [S.region, S.district, S.place].filter(Boolean).join(' '); }
 function info() {
   var d = new Date(), ds = d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0');
@@ -2110,7 +2142,7 @@ function summaries() {
   var inp = input(), g = est.g;
   $('sum1').textContent = USE_NAME[S.use];
   $('sum2').textContent = where() || '-';
-  $('sum3').textContent = inp.W + '×' + inp.L + '×' + inp.H + 'm · ' + ROOF_NAME[S.roof] + ' · ' + fmt(g.py, 0) + '평';
+  $('sum3').textContent = inp.W + '×' + inp.L + '×' + inp.H + 'm · ' + ROOF_NAME[S.roof] + ' · ' + fmt(est.py, 0) + '평' + (spanText(inp) ? ' · ' + spanText(inp) : '');
   $('sum4').textContent = [fabName(inp.fabric) + ' ' + inp.fabColor + (inp.roofPattern === '스트라이프' ? '·스트라이프' : ''), '벤츄레타 ' + inp.vent, inp.doors.length ? '문 ' + inp.doors.length : '', +inp.window ? '창문 ' + inp.window : '', +inp.fan ? '환풍기 ' + inp.fan : ''].filter(Boolean).join(' · ');
 }
 // 단계 접기: 끝낸 단계는 한 줄 요약, 현재 단계만 펼침
@@ -2142,18 +2174,18 @@ function recompute() {
   var inp = input();
   est = E.buildProject(inp, {}, {});
   var g = est.g;
-  $('areaText').textContent = '바닥 ' + fmt(g.area, 0) + '㎡ · ' + fmt(g.py, 0) + '평';
-  $('fArea').textContent = fmt(g.py, 0) + '평';
+  $('areaText').textContent = '바닥 ' + fmt(est.area, 0) + '㎡ · ' + fmt(est.py, 0) + '평';
+  $('fArea').textContent = fmt(est.py, 0) + '평';
   $('fTop').textContent = fmt(g.H + g.rise, 2) + ' m';
   $('fCol').textContent = g.truss ? '쌍기둥' : '외기둥';
   $('fFab').textContent = fabName(inp.fabric);
   var hs = [];   // 고객에게는 기둥 간격·트러스 열수 등 구조 수치를 보이지 않음 · 안내는 한 줄씩 짧게
   if (g.truss) hs.push('이 크기는 바람·하중을 고려해 쌍기둥(격자 기둥)으로 시공합니다.');
-  if (inp.W > 40) hs.push('폭 40m가 넘으면 별도 구조 검토가 필요합니다.');
+  if (spanText(inp)) hs.push('폭이 ' + E.MAX_SPAN + 'm 이상이라 ' + inp.buildings[0].W + 'm 폭 ' + inp.buildings.length + '동을 붙인 연동 구조로 계획합니다. 동 사이는 벽 없이 기둥만 들어갑니다.');
   var windH = S.highWind && inp.H > 5;
   if (windH) hs.push('바람이 센 곳은 처마 높이 5m 이하를 권장합니다.');
   var h = hs.map(function (x) { return '· ' + x; }).join('\n'); $('sizeHint').hidden = !h;
-  $('sizeHint').textContent = h; $('sizeHint').className = 'hint' + (inp.W > 40 || windH ? ' warn' : '');
+  $('sizeHint').textContent = h; $('sizeHint').className = 'hint' + (windH ? ' warn' : '');
   var os = [S.highWind ? '바람이 센 곳은 벤츄레타 없이 시공하길 권장합니다.' : '벤츄레타는 같은 크기 현장 기준으로 ' + ventAuto() + '개를 권장합니다.', '기본 원단은 ' + fabName(fabricAuto()) + '이며, 난연·UV코팅·0.6T도 고를 수 있습니다.'];
   if (+S.doorN && +S.doorS.split('x')[0] > 4) os.push('폭 4m보다 넓은 문은 현장 확인 후 크기를 확정합니다.');
   if (+S.doorN && +S.doorS.split('x')[1] > inp.H - 0.3) os.push('처마가 ' + inp.H + 'm라 문 높이는 약 ' + fmt(inp.H - 0.3, 1) + 'm로 맞춰 드립니다.');
@@ -2236,7 +2268,7 @@ function summary(id) {
     '회사·단체: ' + ($('client').value || '-'), '담당자: ' + $('contact').value, '연락처: ' + $('phone').value, '견적서 받을 이메일: ' + email(),
     '현장: ' + (where() || '-') + (S.highWind ? ' (강풍 지역)' : ''),
     '용도: ' + USE_NAME[S.use],
-    '규격: 폭 ' + inp.W + 'm × 길이 ' + inp.L + 'm × 처마 ' + inp.H + 'm (' + fmt(g.py, 0) + '평, 최고 ' + fmt(g.H + g.rise, 2) + 'm)',
+    '규격: 폭 ' + inp.W + 'm × 길이 ' + inp.L + 'm × 처마 ' + inp.H + 'm (' + fmt(est.py, 0) + '평, 최고 ' + fmt(g.H + g.rise, 2) + 'm' + (spanText(inp) ? ', ' + spanText(inp) : '') + ')',
     '지붕: ' + E.ROOFS[inp.roof] + ' · 기둥: ' + (g.truss ? '쌍기둥' : '외기둥') + ' · 원단: ' + E.FABRICS[inp.fabric],
     '원단 색상: ' + inp.fabColor + ' · 지붕 패턴: ' + inp.roofPattern,
     '출입문: ' + (inp.doors.length ? inp.doors.length + '개 (' + ds + 'm)' : '없음') + ' · 창문 ' + inp.window + ' · 환풍기 ' + inp.fan + ' · 벤츄레타 ' + inp.vent,
