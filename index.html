@@ -473,7 +473,8 @@ function geometry(inp) {
   var nBay = Math.max(1, ceil(L / (inp.bay ? +inp.bay : COEF.bay)));
   var bay = L / nBay;
   var F = nBay + 1;
-  var endPosts = Math.max(0, ceil(W / COEF.endPost) - 1);
+  var endPostsAuto = Math.max(0, ceil(W / COEF.endPost) - 1);   // 정면·배면 중간 기둥(박공벽 샛기둥) 개수 — 직접 넣으면 그 값
+  var endPosts = inp.endPosts !== '' && inp.endPosts != null && +inp.endPosts >= 0 ? Math.round(+inp.endPosts) : endPostsAuto;
   // 트러스 춤: 아치 서천 20m 624 / 포항 33m 800, 박공 영월 300~500
   var depth = roof === 'arch' ? Math.min(0.9, Math.max(0.5, 0.40 + 0.012 * W)) : Math.min(0.8, Math.max(0.3, 0.2 + 0.018 * W));
   var colAuto = colRule(W, H, inp.use, inp.region === '제주' || !!inp.highWind), colMode = /^(single|double|double89)$/.test(inp.colType || '') ? inp.colType : 'auto';
@@ -489,7 +490,7 @@ function geometry(inp) {
   var nB = Math.max(1, Math.round(S / 2.8) - nVT + 1);
   if (W > 25) { nVT += nB; nB = 0; }   // 대형 스팬: 종방향 전부 VT 트러스 (포항 VT1·VT2 상세도)
   var endSegArea = roof === 'arch' ? (2 / 3) * W * rise : W * rise / 2;
-  return {W: W, L: L, H: H, roof: roof, rise: rise, S: S, nBay: nBay, bay: bay, F: F, endPosts: endPosts,
+  return {W: W, L: L, H: H, roof: roof, rise: rise, S: S, nBay: nBay, bay: bay, F: F, endPosts: endPosts, endPostsAuto: endPostsAuto,
           depth: depth, vtd: Math.min(0.9, rise * 0.5 || 0.6), truss: truss, twinDia: twinDia, twinGap: twinGap, colAuto: colAuto, colMode: colMode, colDia: colDia, chordDia: ms.up, ms: ms, nVT: nVT, nB: nB,
           area: W * L, py: W * L / 3.3058, endSegArea: endSegArea,
           top: H + rise};
@@ -657,13 +658,14 @@ function takeoff(inp) {
   var fabRoof = g.S * (g.L + 0.6);
   var fabEnd = (walls.front ? g.W * hs.front : 0) + (walls.back ? g.W * hs.back : 0) + gables * g.endSegArea;
   var fabSide = (walls.left ? g.L * Math.min(hs.left, g.H) : 0) + (walls.right ? g.L * Math.min(hs.right, g.H) : 0);
-  // 지붕 천막은 좌·우 처마 VT 트러스 아래 현재까지 덮음 (그 높이를 벽 천막이 이미 덮는 면은 제외)
+  // 지붕 천막은 처마 트러스 아래 현재 높이까지 둘레를 덮음: 좌·우 처마 VT + 앞·뒤 마구리 쪽도 같은 높이 (그 높이를 벽 천막이 이미 덮는 면은 제외)
   var jnd = inp.joined || {}, valance = {};
-  ['left', 'right'].forEach(function (s) {
-    var off = (s === 'right' && inp.leanto) || (jnd[s] && jnd[s].full);
+  SIDES.forEach(function (s) {
+    var end = s === 'front' || s === 'back';
+    var off = (s === 'right' && inp.leanto) || (jnd[s] && jnd[s].full) || (end && !gableOn(inp, s));
     valance[s] = off ? 0 : Math.max(0, g.vtd - (walls[s] ? Math.min(hs[s], g.H) : 0));
   });
-  var fabValance = g.L * (valance.left + valance.right);
+  var fabValance = g.L * (valance.left + valance.right) + g.W * (valance.front + valance.back);
   var fab = ceil(Math.max(0, fabRoof + fabEnd + fabSide + fabValance - cutArea) * P.fabOverlap);
   var band = r10(fab * P.bandPerM2);
 
@@ -791,7 +793,7 @@ function splitSpans(b) {
   return out;
 }
 
-var BLD_FIELDS = ['name', 'W', 'L', 'H', 'roof', 'colType', 'rise', 'bay', 'walls', 'wallH', 'gableCover', 'doors', 'vent', 'fan', 'window', 'gutter', 'footing', 'insul', 'attach'];
+var BLD_FIELDS = ['name', 'W', 'L', 'H', 'roof', 'colType', 'rise', 'bay', 'endPosts', 'walls', 'wallH', 'gableCover', 'doors', 'vent', 'fan', 'window', 'gutter', 'footing', 'insul', 'attach'];
 function buildingsOf(inp) {
   if (inp.buildings && inp.buildings.length) return inp.buildings;
   var b = {}; BLD_FIELDS.forEach(function (k) { if (inp[k] !== undefined) b[k] = inp[k]; }); b.name = b.name || 'A동';
@@ -1496,6 +1498,8 @@ function isoOne(pen, E, Q, n, fz) {
   if ((t.valance || {})[sF]) { var hf2 = hAt(zF), vd2 = g.vtd * 1000; pen.poly([Q(0, hf2 - vd2, zF), Q(L, hf2 - vd2, zF), Q(L, hf2, zF), Q(0, hf2, zF), Q(0, hf2 - vd2, zF)], {w: 0.25, fill: 'fabricDark'}); }
   if (w[sF]) wallZ(zF, 'fabricDark', sF);
   if (gb.back) gable(L, 'fabricDark', 'back');
+  var bandX = function (x, fill) { var d = g.vtd * 1000; pen.poly([Q(x, H - d, 0), Q(x, H - d, W), Q(x, H, W), Q(x, H, 0), Q(x, H - d, 0)], {w: 0.25, fill: fill}); };
+  if ((t.valance || {}).back) bandX(L, 'fabricDark');
   var strip = function (i) { var a = prof[i], b = prof[i + 1]; pen.poly([Q(0, a[1], a[0]), Q(L, a[1], a[0]), Q(L, b[1], b[0]), Q(0, b[1], b[0]), Q(0, a[1], a[0])], {w: 0.05, fill: i % 2 ? 'fabric' : 'fabric2', c: 'fabric2'}); };
   var i;
   if (fz) for (i = 0; i < n; i++) strip(i); else for (i = n - 1; i >= 0; i--) strip(i);
@@ -1515,6 +1519,7 @@ function isoOne(pen, E, Q, n, fz) {
   if (va[sN]) { var hn = hAt(zN); pen.poly([Q(0, hn - vtd, zN), Q(L, hn - vtd, zN), Q(L, hn, zN), Q(0, hn, zN), Q(0, hn - vtd, zN)], {w: 0.25, fill: 'fabric'}); }
   if (w[sN]) wallZ(zN, 'fabricWall', sN);
   if (gb.front) gable(0, 'fabricWall', 'front');
+  if ((t.valance || {}).front) bandX(0, 'fabricWall');
   if (w.front) placedDoors(E, 'front').forEach(function (p) { var dh = Math.min(p.dh, H - 200); pen.poly([Q(0, 0, p.s), Q(0, dh, p.s), Q(0, dh, p.s + p.dw), Q(0, 0, p.s + p.dw), Q(0, 0, p.s)], {w: 0.35, fill: 'door', c: 'accent'}); });
   if (w[sN] && !fz) {
     placedDoors(E, 'left').forEach(function (p) { var dh = Math.min(p.dh, H - 200); pen.poly([Q(p.s, 0, 0), Q(p.s, dh, 0), Q(p.s + p.dw, dh, 0), Q(p.s + p.dw, 0, 0), Q(p.s, 0, 0)], {w: 0.35, fill: 'door', c: 'accent'}); });
@@ -2013,6 +2018,7 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
   var va = E.t.valance || {};
   if (va.left) quad([0, H - g.vtd, -0.02], [L, H - g.vtd, -0.02], [L, H, -0.02], [0, H, -0.02], matFab);
   if (va.right) quad([0, hr - g.vtd, W + 0.02], [L, hr - g.vtd, W + 0.02], [L, hr, W + 0.02], [0, hr, W + 0.02], matFab);
+  [[0, va.front, -0.02], [L, va.back, L + 0.02]].forEach(function (e) { if (e[1]) quad([e[2], H - g.vtd, 0], [e[2], H - g.vtd, W], [e[2], H, W], [e[2], H, 0], matWall); });   // 마구리 쪽 띠
   // 마구리(처마 위 삼각부) + 처마에서 아래로 덮는 벽
   function gable(x) { var p = [x, H, W / 2], ids = []; prof.forEach(function (q) { p.push(x, q[1], q[0]); }); p.push(x, H, W, x, H, 0); var m = prof.length + 2; for (var k = 1; k <= m; k++) ids.push(0, k, k % m + 1); mesh(p, ids, matWall); }
   function endWall(x, h) { quad([x, H - h, 0], [x, H - h, W], [x, H, W], [x, H, 0], matWall); }
