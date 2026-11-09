@@ -490,7 +490,7 @@ function geometry(inp) {
   if (W > 25) { nVT += nB; nB = 0; }   // 대형 스팬: 종방향 전부 VT 트러스 (포항 VT1·VT2 상세도)
   var endSegArea = roof === 'arch' ? (2 / 3) * W * rise : W * rise / 2;
   return {W: W, L: L, H: H, roof: roof, rise: rise, S: S, nBay: nBay, bay: bay, F: F, endPosts: endPosts,
-          depth: depth, truss: truss, twinDia: twinDia, twinGap: twinGap, colAuto: colAuto, colMode: colMode, colDia: colDia, chordDia: ms.up, ms: ms, nVT: nVT, nB: nB,
+          depth: depth, vtd: Math.min(0.9, rise * 0.5 || 0.6), truss: truss, twinDia: twinDia, twinGap: twinGap, colAuto: colAuto, colMode: colMode, colDia: colDia, chordDia: ms.up, ms: ms, nVT: nVT, nB: nB,
           area: W * L, py: W * L / 3.3058, endSegArea: endSegArea,
           top: H + rise};
 }
@@ -560,6 +560,16 @@ function crewsAndEq(total, fab, A, Wmax, Hmax, Acrew) {
   return {crews: {pf: crew(pdPF, 4, 5, 6), ps: crew(pdPS, 5, 6, 8), fm: crew(pdFM, 3, 4, 4), fs: crew(pdFS, 4, 6, 8)}, eq: eq, lift: {n: liftN, d: liftD, qty: liftN * liftD}};
 }
 
+// 종방향 부재 배치(지붕 단면 길이 비율 0~1): 양 처마 VT(4면 모두 기둥 위 트러스) + 용마루 쪽부터 VT, 나머지 도리(B)
+function vtLayout(g) {
+  var out = [{t: 0, type: 'VT', eave: true}, {t: 1, type: 'VT', eave: true}];
+  var nI = g.nVT >= 2 ? g.nVT - 2 : g.nVT, tot = nI + g.nB, k;   // nVT에 양 처마 포함 (폭 8m 이하 박공·아치는 용마루 1열만 계산)
+  if (g.roof !== 'shed' && tot % 2 === 0 && tot) tot += 1;
+  var mid = [];
+  for (k = 0; k < tot; k++) mid.push({t: (k + 1) / (tot + 1)});
+  mid.slice().sort(function (a, b) { return Math.abs(a.t - 0.5) - Math.abs(b.t - 0.5); }).forEach(function (o, j) { o.type = j < nI ? 'VT' : 'B'; o.ridge = g.roof !== 'shed' && Math.abs(o.t - 0.5) < 1e-6; });
+  return out.concat(mid).sort(function (a, b) { return a.t - b.t; });
+}
 // 벽 천막 높이: wallH[면] = 처마에서 아래로 덮는 높이(m), 비우면 전체. 마구리(박공 위 삼각부): 벽을 안 덮는 앞·뒤 면도 gableCover면 덮음(캐노피 기본)
 function wallHt(inp, g, s) { var e = s === 'right' && g.roof === 'shed' ? g.H + g.rise : g.H, d = +((inp.wallH || {})[s]) || 0; return d > 0 && d < e ? d : e; }
 function gableOn(inp, s) {
@@ -647,7 +657,14 @@ function takeoff(inp) {
   var fabRoof = g.S * (g.L + 0.6);
   var fabEnd = (walls.front ? g.W * hs.front : 0) + (walls.back ? g.W * hs.back : 0) + gables * g.endSegArea;
   var fabSide = (walls.left ? g.L * Math.min(hs.left, g.H) : 0) + (walls.right ? g.L * Math.min(hs.right, g.H) : 0);
-  var fab = ceil(Math.max(0, fabRoof + fabEnd + fabSide - cutArea) * P.fabOverlap);
+  // 지붕 천막은 좌·우 처마 VT 트러스 아래 현재까지 덮음 (그 높이를 벽 천막이 이미 덮는 면은 제외)
+  var jnd = inp.joined || {}, valance = {};
+  ['left', 'right'].forEach(function (s) {
+    var off = (s === 'right' && inp.leanto) || (jnd[s] && jnd[s].full);
+    valance[s] = off ? 0 : Math.max(0, g.vtd - (walls[s] ? Math.min(hs[s], g.H) : 0));
+  });
+  var fabValance = g.L * (valance.left + valance.right);
+  var fab = ceil(Math.max(0, fabRoof + fabEnd + fabSide + fabValance - cutArea) * P.fabOverlap);
   var band = r10(fab * P.bandPerM2);
 
   // 기초철물
@@ -662,7 +679,7 @@ function takeoff(inp) {
 
   return {g: g, mtLen: mtLenOut, pipes: pipes, bends: bends, totalPipes: total, sq: sq, nCol: nCol, bpKey: g.truss ? 'bp_l' : bpKey, bpName: g.truss ? '800×240×12T' : bpName, bp: bp,
           fab: fab, band: band, crews: {pf: cPF, ps: cPS, fm: cFM, fs: cFS}, eq: eq,
-          lift: {n: liftN, d: liftD, qty: liftN * liftD}, region: region, walls: walls, wallHt: hs, gables: {front: gableOn(inp, 'front'), back: gableOn(inp, 'back')}, doors: doors};
+          lift: {n: liftN, d: liftD, qty: liftN * liftD}, region: region, walls: walls, wallHt: hs, valance: valance, gables: {front: gableOn(inp, 'front'), back: gableOn(inp, 'back')}, doors: doors};
 }
 
 // ───────── 견적 내역 구성 ─────────
@@ -991,7 +1008,7 @@ function numToKorean(n) {
 
 var FAB_COLORS = ['진회색', '연회색', '녹색', '흰색'], ROOF_PATTERNS = ['단일색상', '스트라이프'];   // 원단 색상·지붕 패턴 (금액 영향 없음)
 var CUSTOMER_FABRICS = ['fab_tarp04', 'fab_soltop05', 'fab_soltop05fr', 'fab_soltop05uv', 'fab_soltop06', 'fab_soltop06fr', 'fab_soltop06uv'];   // 고객 페이지 선택지 (기본 졸탑 0.5T)
-var API = {MAX_SPAN: MAX_SPAN, spanCount: spanCount, splitSpans: splitSpans, FAB_COLORS: FAB_COLORS, ROOF_PATTERNS: ROOF_PATTERNS, CUSTOMER_FABRICS: CUSTOMER_FABRICS, CIVIL: CIVIL, DISTRICTS: DISTRICTS, defaultVent: defaultVent, colRule: colRule, mtFrame: mtFrame, memberSpec: memberSpec, defaultRise: defaultRise, DEFAULT_PRICES: DEFAULT_PRICES, PRICE_META: PRICE_META, FABRICS: FABRICS, REGIONS: REGIONS, USES: USES,
+var API = {MAX_SPAN: MAX_SPAN, spanCount: spanCount, splitSpans: splitSpans, FAB_COLORS: FAB_COLORS, ROOF_PATTERNS: ROOF_PATTERNS, CUSTOMER_FABRICS: CUSTOMER_FABRICS, CIVIL: CIVIL, DISTRICTS: DISTRICTS, defaultVent: defaultVent, colRule: colRule, mtFrame: mtFrame, vtLayout: vtLayout, memberSpec: memberSpec, defaultRise: defaultRise, DEFAULT_PRICES: DEFAULT_PRICES, PRICE_META: PRICE_META, FABRICS: FABRICS, REGIONS: REGIONS, USES: USES,
            ROOFS: ROOFS, COEF: COEF, geometry: geometry, takeoff: takeoff, buildEstimate: buildEstimate, buildProject: buildProject, layoutBuildings: layoutBuildings, buildingsOf: buildingsOf, planToLocal: planToLocal, numToKorean: numToKorean};
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TentEngine = API;
 })(this);
@@ -1327,7 +1344,8 @@ function column2d(v, x, h, g, sc, side) {
   if (g.truss) { // 격자기둥: Ø114.3×2 @600(또는 Ø89.1×2 @500) + 수직·사재 (포항 기둥상세도)
     var x2 = x - side * g.twinGap * 1000, y;
     v.line(x, 0, x, h, {w: 0.5}); v.line(x2, 0, x2, h, {w: 0.5});
-    var st = 1500; for (y = 0; y + st <= h + 1; y += st) { v.line(x, y, x2, y, {w: 0.2}); v.line(x, y, x2, Math.min(h, y + st), {w: 0.14}); }
+    var st = 1500, k = 0; for (y = 0; y + st <= h + 1; y += st, k++) { v.line(x, y, x2, y, {w: 0.2}); if (k % 2) v.line(x2, y, x, Math.min(h, y + st), {w: 0.14}); else v.line(x, y, x2, Math.min(h, y + st), {w: 0.14}); }   // 칸마다 사재 방향을 번갈아 (지그재그)
+    v.line(x, h, x2, h, {w: 0.2});
   } else { var cw = Math.max(140, 1.1 * sc); v.rect(x - cw / 2, 0, cw, h, {w: 0.45, fill: 'ink'}); }
 }
 
@@ -1391,7 +1409,7 @@ function sheetSide(E, info) {
   var lines = Math.max(2, g.nVT + g.nB);
   for (i = 1; i < lines; i++) { var yy = eaveTop + (top - eaveTop) * i / lines; v.line(0, yy, L, yy, {w: 0.14, c: 'dim'}); }
   // VT 트러스(처마) 지그재그
-  var vtH = Math.min(900, (top - H) * 0.5 || 600);
+  var vtH = g.vtd * 1000;
   v.line(0, H - vtH, L, H - vtH, {w: 0.25});
   var step = 800;
   for (var x = 0; x < L - 1; x += step) { v.line(x, H - vtH, Math.min(L, x + step / 2), H, {w: 0.12}); v.line(Math.min(L, x + step / 2), H, Math.min(L, x + step), H - vtH, {w: 0.12}); }
@@ -1440,16 +1458,10 @@ function sheetRoof(E, info) {
   for (var x = 830; x < L; x += 830) v.line(x, 0, x, S, {w: 0.08, c: 'dim'});
   xs.forEach(function (xx, k) { v.line(xx, 0, xx, S, {w: 0.55}); v.text(xx, S + 1800, 'MT' + (k + 1), {size: 2.1, anchor: 'middle'}); });
   // VT, B 배치: 용마루 중심 + 대칭
-  var names = [], nV = g.nVT, nB = g.nB, ys = [];
-  if ((nV + nB) % 2 === 0) nB += 1;
-  var total = nV + nB, k2;
-  for (k2 = 0; k2 < total; k2++) ys.push(S * (k2 + 1) / (total + 1));
-  // VT 위치 선택: 중앙 우선
-  var order = ys.map(function (y, idx) { return {y: y, idx: idx, dc: Math.abs(y - S / 2)}; }).sort(function (a, b) { return a.dc - b.dc; });
-  order.forEach(function (o, j) { o.type = j < nV ? 'VT' : 'B'; });
-  order.sort(function (a, b) { return a.y - b.y; }).forEach(function (o, j) {
-    v.line(0, o.y, L, o.y, {w: o.type === 'VT' ? 0.6 : 0.35, c: o.type === 'VT' ? 'ink' : 'ink', dash: o.type === 'B' ? '3 1' : null});
-    v.text(-900, o.y, o.type === 'VT' && Math.abs(o.y - S / 2) < 1 ? 'VT(용마루)' : o.type, {size: 2.2, anchor: 'end'});
+  EN.vtLayout(g).forEach(function (o) {   // 양 처마 VT + 용마루 VT + 도리(B)
+    var y = o.t * S;
+    v.line(0, y, L, y, {w: o.type === 'VT' ? (o.eave ? 0.8 : 0.6) : 0.35, c: 'ink', dash: o.type === 'B' ? '3 1' : null});
+    v.text(-900, y, o.eave ? 'VT(처마)' : o.ridge && o.type === 'VT' ? 'VT(용마루)' : o.type, {size: 2.2, anchor: 'end'});
   });
   // 벤츄레타
   var nv = +E.inp.vent || 0; if (nv) spread(nv, L, 600).forEach(function (s) { v.rect(s, S / 2 - 300, 600, 600, {w: 0.3, fill: 'accent'}); });
@@ -1481,6 +1493,7 @@ function isoOne(pen, E, Q, n, fz) {
   var whm = function (s, z) { return wh[s] ? Math.min(hAt(z), wh[s] * 1000) : hAt(z); };
   function wallZ(z, fill, s) { var h = hAt(z), b0 = h - whm(s, z); pen.poly([Q(0, b0, z), Q(L, b0, z), Q(L, h, z), Q(0, h, z), Q(0, b0, z)], {w: 0.25, fill: fill}); }
   function gable(x, fill, s) { var y0 = w[s] ? H - whm(s, 0) : H, arr = [Q(x, y0, 0)]; prof.forEach(function (q) { arr.push(Q(x, q[1], q[0])); }); arr.push(Q(x, y0, W)); arr.push(Q(x, y0, 0)); pen.poly(arr, {w: 0.25, fill: fill}); }
+  if ((t.valance || {})[sF]) { var hf2 = hAt(zF), vd2 = g.vtd * 1000; pen.poly([Q(0, hf2 - vd2, zF), Q(L, hf2 - vd2, zF), Q(L, hf2, zF), Q(0, hf2, zF), Q(0, hf2 - vd2, zF)], {w: 0.25, fill: 'fabricDark'}); }
   if (w[sF]) wallZ(zF, 'fabricDark', sF);
   if (gb.back) gable(L, 'fabricDark', 'back');
   var strip = function (i) { var a = prof[i], b = prof[i + 1]; pen.poly([Q(0, a[1], a[0]), Q(L, a[1], a[0]), Q(L, b[1], b[0]), Q(0, b[1], b[0]), Q(0, a[1], a[0])], {w: 0.05, fill: i % 2 ? 'fabric' : 'fabric2', c: 'fabric2'}); };
@@ -1492,6 +1505,14 @@ function isoOne(pen, E, Q, n, fz) {
     if (!E.inp.leanto || !fz) { var c0 = Q(x, 0, zN), c1 = Q(x, hAt(zN), zN); pen.line(c0[0], c0[1], c1[0], c1[1], {w: 0.35}); }
     if (!E.inp.leanto || fz) { var c2 = Q(x, 0, zF), c3 = Q(x, hAt(zF), zF); pen.line(c2[0], c2[1], c3[0], c3[1], {w: 0.2, c: 'dim'}); }
   }
+  var vtd = g.vtd * 1000;   // 양 처마 VT 트러스 (기둥 위 종방향)
+  [[zF, !E.inp.leanto || fz, 'dim'], [zN, !E.inp.leanto || !fz, 'ink']].forEach(function (ez) {
+    if (!ez[1]) return;
+    var z = ez[0], y = hAt(z), a0 = Q(0, y - vtd, z), a1 = Q(L, y - vtd, z); pen.line(a0[0], a0[1], a1[0], a1[1], {w: 0.25, c: ez[2]});
+    for (var xx = 0; xx < L - 1; xx += 800) { var p1 = Q(xx, y - vtd, z), p2 = Q(Math.min(L, xx + 400), y, z), p3 = Q(Math.min(L, xx + 800), y - vtd, z); pen.line(p1[0], p1[1], p2[0], p2[1], {w: 0.1, c: ez[2]}); pen.line(p2[0], p2[1], p3[0], p3[1], {w: 0.1, c: ez[2]}); }
+  });
+  var va = t.valance || {};   // 지붕 천막이 처마 트러스 아래까지
+  if (va[sN]) { var hn = hAt(zN); pen.poly([Q(0, hn - vtd, zN), Q(L, hn - vtd, zN), Q(L, hn, zN), Q(0, hn, zN), Q(0, hn - vtd, zN)], {w: 0.25, fill: 'fabric'}); }
   if (w[sN]) wallZ(zN, 'fabricWall', sN);
   if (gb.front) gable(0, 'fabricWall', 'front');
   if (w.front) placedDoors(E, 'front').forEach(function (p) { var dh = Math.min(p.dh, H - 200); pen.poly([Q(0, 0, p.s), Q(0, dh, p.s), Q(0, dh, p.s + p.dw), Q(0, 0, p.s + p.dw), Q(0, 0, p.s)], {w: 0.35, fill: 'door', c: 'accent'}); });
@@ -1616,10 +1637,8 @@ function sheetRoofAll(E, info) {
     var c = [P(0, 0), P(L, 0), P(L, W), P(0, W)]; v.poly(c.concat([c[0]]), {w: 0.5, fill: 'tint'});
     for (var x = 830; x < L; x += 830) ln(x, 0, x, W, {w: 0.07, c: 'dim'});
     // 종방향: VT·도리
-    var nV = g.nVT, nB = g.nB, tot = nV + nB, k, zs = [];
-    if (g.roof === 'shed') { for (k = 0; k < tot; k++) zs.push({z: W * k / Math.max(1, tot - 1), t: k === 0 || k === tot - 1 ? 'VT' : 'B'}); }
-    else { if (tot % 2 === 0) tot += 1; for (k = 0; k < tot; k++) zs.push({z: W * (k + 1) / (tot + 1)}); zs.sort(function (a, b) { return Math.abs(a.z - W / 2) - Math.abs(b.z - W / 2); }).forEach(function (o, j) { o.t = j < nV ? 'VT' : 'B'; }); }
-    zs.forEach(function (o) { var ridge = g.roof !== 'shed' && Math.abs(o.z - W / 2) < 1; ln(0, o.z, L, o.z, {w: ridge ? 0.7 : o.t === 'VT' ? 0.45 : 0.25, dash: o.t === 'B' ? '3 1' : null}); });
+    var k;
+    EN.vtLayout(g).forEach(function (o) { var z = o.t * W; ln(0, z, L, z, {w: o.ridge && o.type === 'VT' ? 0.7 : o.type === 'VT' ? 0.45 : 0.25, dash: o.type === 'B' ? '3 1' : null}); });
     if (g.roof !== 'shed') { var pr = P(L * 0.5, W / 2); v.text(pr[0], pr[1] + 500, 'VT용마루', {size: 1.9, anchor: 'middle', c: 'dim'}); }
     // MT
     var step = g.F > 14 ? 2 : 1;
@@ -1990,6 +2009,10 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
   var hr = g.roof === 'shed' ? H + rise : H;
   if (walls.left) { var hl = wh.left || H; quad([0, H - hl, 0], [L, H - hl, 0], [L, H, 0], [0, H, 0], matWall); }
   if (walls.right) { var hR = wh.right || hr; quad([0, hr - hR, W], [L, hr - hR, W], [L, hr, W], [0, hr, W], matWall); }
+  // 지붕 천막이 좌·우 처마 트러스 아래까지 내려옴
+  var va = E.t.valance || {};
+  if (va.left) quad([0, H - g.vtd, -0.02], [L, H - g.vtd, -0.02], [L, H, -0.02], [0, H, -0.02], matFab);
+  if (va.right) quad([0, hr - g.vtd, W + 0.02], [L, hr - g.vtd, W + 0.02], [L, hr, W + 0.02], [0, hr, W + 0.02], matFab);
   // 마구리(처마 위 삼각부) + 처마에서 아래로 덮는 벽
   function gable(x) { var p = [x, H, W / 2], ids = []; prof.forEach(function (q) { p.push(x, q[1], q[0]); }); p.push(x, H, W, x, H, 0); var m = prof.length + 2; for (var k = 1; k <= m; k++) ids.push(0, k, k % m + 1); mesh(p, ids, matWall); }
   function endWall(x, h) { quad([x, H - h, 0], [x, H - h, W], [x, H, W], [x, H, 0], matWall); }
@@ -2009,7 +2032,14 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
     var x = f * g.bay, hr2 = g.roof === 'shed' ? H + rise : H;
     if (E.inp.dropEnd && ((f === 0 && E.inp.extendAt === 'front') || (f === g.F - 1 && E.inp.extendAt === 'back'))) continue;   // 길이 연장: 본동 프레임 공유
     column(x, 0, H); if (!E.inp.leanto) column(x, W, hr2);
-    if (g.truss) { column(x, g.twinGap, H); if (!E.inp.leanto) column(x, W - g.twinGap, hr2); }
+    if (g.truss) {   // 쌍기둥 격자: 가로재 @1.5m + 칸마다 방향이 바뀌는 사재
+      column(x, g.twinGap, H); if (!E.inp.leanto) column(x, W - g.twinGap, hr2);
+      [[0, g.twinGap, H], [W, W - g.twinGap, hr2]].forEach(function (c, ci) {
+        if (ci && E.inp.leanto) return;
+        for (var yy0 = 0, kk = 0; yy0 < c[2] - 0.05; yy0 += 1.5, kk++) { var y1 = Math.min(c[2], yy0 + 1.5); seg([x, yy0, c[0]], [x, yy0, c[1]]); if (kk % 2) seg([x, yy0, c[1]], [x, y1, c[0]]); else seg([x, yy0, c[0]], [x, y1, c[1]]); }
+        seg([x, c[2], c[0]], [x, c[2], c[1]]);
+      });
+    }
     var oe = +E.inp.openEnds || 0, wl = E.t.walls;
     var isEndF = (f === 0 && !(oe && wl.front === false)) || (f === g.F - 1 && !(oe && wl.back === false));
     (isEndF ? frEnd : frMid).forEach(function (m) {
@@ -2017,10 +2047,18 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
       if (m.c === 'up' || m.c === 'lo' || m.c === 'tie') heavy.push(a[0], a[1], a[2], b[0], b[1], b[2]); else seg(a, b);
     });
   }
-  var hg = new T.BufferGeometry(); hg.setAttribute('position', new T.Float32BufferAttribute(heavy, 3)); grp.add(new T.LineSegments(hg, new T.LineBasicMaterial({color: 0x2c3540})));
   var ns = g.endPosts + 1;
   for (i = 1; i < ns; i++) { var z = W * i / ns, hz = Dr.yAt(lo.map(function (q) { return [q[0] * 1000, q[1] * 1000]; }), z * 1000) / 1000; column(0, z, hz); column(L, z, hz); }
   [0, Math.round(n / 4), Math.round(n / 2), Math.round(3 * n / 4), n].forEach(function (k) { seg([0, prof[k][1], prof[k][0]], [L, prof[k][1], prof[k][0]]); });
+  // 양 처마 VT 트러스: 기둥 위 종방향 (상현 = 처마선, 하현 + 지그재그 사재)
+  var vtd = g.vtd;
+  [[prof[0], true], [prof[n], !E.inp.leanto]].forEach(function (pe) {
+    if (!pe[1]) return;
+    var z = pe[0][0], y = pe[0][1], st = 0.8, xx;
+    heavy.push(0, y, z, L, y, z, 0, y - vtd, z, L, y - vtd, z);
+    for (xx = 0; xx < L - 1e-6; xx += st) { var xm = Math.min(L, xx + st / 2), xe = Math.min(L, xx + st); seg([xx, y - vtd, z], [xm, y, z]); seg([xm, y, z], [xe, y - vtd, z]); }
+  });
+  var hg = new T.BufferGeometry(); hg.setAttribute('position', new T.Float32BufferAttribute(heavy, 3)); grp.add(new T.LineSegments(hg, new T.LineBasicMaterial({color: 0x2c3540})));
   for (var yy = 1.65; yy < H - 0.2; yy += 1.65) { seg([0, yy, 0], [L, yy, 0]); seg([0, yy, W], [L, yy, W]); }
   var lg = new T.BufferGeometry(); lg.setAttribute('position', new T.Float32BufferAttribute(segs, 3)); grp.add(new T.LineSegments(lg, lineSteel));
   // 문·창문·벤츄레타
