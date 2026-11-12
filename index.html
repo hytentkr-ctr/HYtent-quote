@@ -232,7 +232,6 @@ body{font-size:15.5px}
         <label class="f">출입문 (슬라이딩)<span class="unit"><input type="number" id="doorN" min="0" max="10" step="1" inputmode="numeric"><i>개</i></span></label>
         <label class="f">출입문 크기 (폭×높이)<select id="doorS"><option value="4x4">4 × 4 m (지게차·표준)</option><option value="5x4.5">5 × 4.5 m (5톤 화물차)</option><option value="6x5">6 × 5 m (대형 차량)</option><option value="3x3">3 × 3 m (소형)</option></select></label>
         <label class="f">창문 1.5×1.0m<select id="window"><option value="0">없음</option><option>2</option><option>4</option><option>6</option><option>8</option></select></label>
-        <label class="f">벽면 환풍기<select id="fan"><option value="0">없음</option><option>2</option><option>4</option><option>6</option></select></label>
       </div>
       <p class="hint" id="optHint"></p>
       <div class="next"><button type="button" class="btn go primary2" data-next="5">도면 확인하고 견적 요청</button></div>
@@ -361,6 +360,10 @@ var DEFAULT_PRICES = {
   'civ_pump': 0,  // 펌프카 (회)
   'civ_waste': 0,  // 폐기물처리 (식)
   'civ_haul': 0,   // 자재운반비 (회)
+  'civ_lean': 0,   // 버림콘크리트 25-180-15 (m³) — 남원 136평 실적 (상동리 110,000)
+  'civ_soil': 0,    // 토사반출 (m³) — 남원 136평·상동리 실적
+  'civ_cure': 0,     // 양생작업 2일 자재 (㎡) — 남원 136평 2,800,000 ÷ 450㎡
+  'civ_cureLab': 0,  // 양생작업 2일 인건 (㎡) — 남원 136평 1,200,000 ÷ 450㎡
   'rateProfitCivil': 0, // 토목 이윤 (%) — 실제 5~10%
   // 원단(m²)
   'fab_soltop05': 0, 'fab_fr052': 0, 'fab_uv052': 0, 'fab_06': 0,
@@ -385,7 +388,7 @@ var PRICE_META = [
   ['부자재·옵션', ['rail','레일 및 로라 set (식)'],['vent','벤츄레타 Ø600'],['fan','벽면환풍기 490×490'],['window','창문 1500×1000'],['gutter','물받이 SUS (M)'],['gutterLabor','물받이 설치 (인)'],['weld','용접봉 (KG)'],['disc','컷팅석·컷팅날 (EA)'],['paint','락카·은분 (EA)']],
   ['노무비 (인)', ['wagePipeFab','파이프 제작비'],['wagePipeSet','현장 조립설치비'],['wageFabMake','원단 제작비'],['wageFabSet','현장 천막설치비']],
   ['장비·운반 (대)', ['crane5','중장비 5TON'],['crane25','중장비 25TON'],['crane50','중장비 50TON'],['crane75','중장비 75TON'],['crane100','중장비 100TON'],['lift','리프트 렌탈 (대·일)'],['truck5','운반비 5TON'],['truck25','운반비 25TON'],['jejuT25','제주 탁송 25TON'],['jejuT5','제주 탁송 5TON'],['jejuT1','제주 탁송 1TON 왕복']],
-  ['토목 (기초·바닥)', ['civ_conc','레미콘 25-240-15 (m³)'],['civ_mesh','와이어메쉬 6번 (ea)'],['civ_rebar','철근 D10 (kg)'],['civ_form','유로폼(거푸집) 자재 (식)'],['civ_misc','상승각·기타자재 (식)'],['civ_worker','타설공·목수·철근공 (인)'],['civ_plaster','기계미장 (인)'],['civ_cut','컷팅 (식)'],['civ_equip','장비비 03w (일)'],['civ_exc','굴삭기 017W (식)'],['civ_pump','펌프카 (회)'],['civ_waste','폐기물처리 (식)'],['civ_haul','자재운반비 (회)'],['rateProfitCivil','토목 이윤 (%)']],
+  ['토목 (기초·바닥)', ['civ_conc','레미콘 25-240-15 (m³)'],['civ_mesh','와이어메쉬 6번 (ea)'],['civ_rebar','철근 D10 (kg)'],['civ_form','유로폼(거푸집) 자재 (식)'],['civ_misc','상승각·기타자재 (식)'],['civ_worker','타설공·목수·철근공 (인)'],['civ_plaster','기계미장 (인)'],['civ_cut','컷팅 (식)'],['civ_equip','장비비 03w (일)'],['civ_exc','굴삭기 017W (식)'],['civ_pump','펌프카 (회)'],['civ_waste','폐기물처리 (식)'],['civ_haul','자재운반비 (회)'],['civ_lean','버림콘크리트 25-180-15 (m³)'],['civ_soil','토사반출 (m³)'],['civ_cure','양생작업 자재 (㎡)'],['civ_cureLab','양생작업 인건 (㎡)'],['rateProfitCivil','토목 이윤 (%)']],
   ['간접비 (%)', ['rateInsur','산재보험료 (노무비×%)'],['rateSafety','안전관리비 (노무비×%)'],['rateProfit','이윤 (공사원가×%)']]
 ];
 
@@ -802,25 +805,36 @@ function buildingsOf(inp) {
 
 // 토목 물량: A = 바닥면적(㎡), P = 외곽 둘레(m), nc = 기둥 개소
 var CIVIL = {none: '없음', pad: '독립기초', strip: '줄기초', slab: '바닥 콘크리트 타설 250T', tbd: '현장 확인 후 결정'};
-function civilList(kind, A, P, nc) {
-var L = [], r = Math.round, mx = Math.max, c = Math.ceil;
+// o(선택, 2026-11-10 토목 견적서 5건 기준): civRebar 바닥 보강 mesh|rebar|both, civRebarKg 철근 kg/㎡(기본 4.6 = 이천 79평 1.2t÷260㎡),
+//   civLean 버림콘크리트 두께 mm, civSoil 토사반출 m³, civCure 'y' 양생작업 2일
+function civilList(kind, A, P, nc, o) {
+var L = [], r = Math.round, mx = Math.max, c = Math.ceil; o = o || {};
+var lean = +o.civLean > 0 ? +o.civLean : 0, base = kind === 'slab' ? A : P * 0.6;   // 줄기초 폭 0.6m 가정
+var leanM3 = lean ? c(base * lean / 1000 * 1.03) : 0;
 if (kind === 'slab') {
   var m3 = c(A * 0.25 * 1.03);   // 바닥 슬래브 두께 250T (2026-10-12, 이전 150T)
-  L.push(['와이어메쉬', '6번', c(A / 1.7), 'ea', 'mat', 'civ_mesh'],
-    ['기초콘크리트타설', '25-240-15 (250T)', m3, 'm³', 'mat', 'civ_conc'],
+  var rb = /^(rebar|both)$/.test(o.civRebar || '') ? o.civRebar : 'mesh';
+  var kg = rb !== 'mesh' ? r(A * (+o.civRebarKg > 0 ? +o.civRebarKg : 4.6)) : 0;
+  if (rb !== 'rebar') L.push(['와이어메쉬', '6번', c(A / 1.7), 'ea', 'mat', 'civ_mesh']);
+  if (kg) L.push(['철근', 'D10', kg, 'kg', 'mat', 'civ_rebar']);
+  if (leanM3) L.push(['버림콘크리트타설', '25-180-15 (' + lean + 'T)', leanM3, 'm³', 'mat', 'civ_lean']);
+  L.push(['기초콘크리트타설', '25-240-15 (250T)', m3, 'm³', 'mat', 'civ_conc'],
     ['상승각외 기타자재', '', 1, '식', 'mat', 'civ_misc'],
     ['유로폼(거푸집)', '', 1, '식', 'mat', 'civ_form'],
     ['컷팅', '줄눈', 1, '식', 'lab', 'civ_cut'],
     ['콘크리트 타설공', '', mx(4, r(m3 / 9)), '인', 'lab', 'civ_worker'],
-    ['외장목수', '거푸집', mx(2, r(P / 30)), '인', 'lab', 'civ_worker'],
-    ['기계미장', '', mx(2, r(A / 150)), '인', 'lab', 'civ_plaster'],
+    ['외장목수', '거푸집', mx(2, r(P / 30)), '인', 'lab', 'civ_worker']);
+  if (kg) L.push(['철근공', '가공·조립', mx(1, r(kg / 600)), '인', 'lab', 'civ_worker']);
+  L.push(['기계미장', '', mx(2, r(A / 150)), '인', 'lab', 'civ_plaster'],
     ['장비비', '03w', mx(1, r(A / 250)), '일', 'exp', 'civ_equip'],
-    ['펌프카', '', m3 <= 40 ? 1 : m3 <= 150 ? 2 : 3, '회', 'exp', 'civ_pump'],
+    ['펌프카', '', m3 + leanM3 <= 40 ? 1 : m3 + leanM3 <= 150 ? 2 : 3, '회', 'exp', 'civ_pump'],
     ['자재운반비', '', 2, '회', 'exp', 'civ_haul']);
 } else if (kind === 'strip') {
   var v = c(P * 0.18);
   L.push(['컷팅작업', '', 1, '식', 'lab', 'civ_cut'],
-    ['레미콘', '25-240-15', v, 'm³', 'mat', 'civ_conc'],
+    ['레미콘', '25-240-15', v, 'm³', 'mat', 'civ_conc']);
+  if (leanM3) L.push(['버림콘크리트타설', '25-180-15 (' + lean + 'T, 폭 0.6m)', leanM3, 'm³', 'mat', 'civ_lean']);
+  L.push(
     ['철근', 'D10', r(P * 8), 'kg', 'mat', 'civ_rebar'],
     ['유로폼(거푸집)', '', 1, '식', 'mat', 'civ_form'],
     ['기타자재', '', 1, '식', 'mat', 'civ_misc'],
@@ -832,6 +846,10 @@ if (kind === 'slab') {
     ['폐기물처리', '', 1, '식', 'exp', 'civ_waste']);
 } else if (kind === 'pad') {
   L.push(['독립기초 신설', '600×600×800 (가정)', nc, '개소', 'mat', 'footing']);
+}
+if (kind === 'slab' || kind === 'strip') {
+  if (+o.civSoil > 0) L.push(['토사반출', '', r(+o.civSoil), 'm³', 'exp', 'civ_soil']);
+  if (o.civCure === 'y') L.push(['양생작업 (2일)', '자재', c(base), '㎡', 'mat', 'civ_cure'], ['양생작업 (2일)', '인건', c(base), '㎡', 'lab', 'civ_cureLab']);
 }
 return L;
 }
@@ -925,7 +943,7 @@ function buildProject(inp, prices, ov) {
   if (cvKind !== 'none' && cvKind !== 'tbd' && !(cvKind === 'pad' && hasFoot)) {
     var Pm = subs.reduce(function (a, s) { return a + 2 * (s.g.W + s.g.L); }, 0) - 2 * joins.reduce(function (a, j) { return a + j.len; }, 0);
     var nc = subs.reduce(function (a, s) { return a + s.t.nCol; }, 0);
-    civilList(cvKind, area, Pm, nc).forEach(function (c) {
+    civilList(cvKind, area, Pm, nc, inp).forEach(function (c) {
       var it = {sec: 'civil', bld: multi ? '토목' : '', bi: -2, name: c[0], spec: c[1], qty: c[2], unit: c[3], kind: c[4], price: Math.round(PR[c[5]] || 0), note: c[5] === 'footing' ? '단가 확인 필요' : ''};
       it.amt = Math.round(it.qty * it.price); items.push(it);
     });
@@ -2147,7 +2165,7 @@ function input() {
   var inp = {use: S.use, region: S.region, district: S.district, place: S.place, W: d.W, L: d.L, H: d.H, roof: S.roof, rise: null, bay: null,
     walls: u.noWalls ? {front: false, back: false, left: false, right: false} : {front: true, back: true, left: true, right: true},
     fabric: S.fabric || fabricAuto(), fabColor: S.fabColor || '진회색', roofPattern: S.roofPattern || '스트라이프', highWind: S.highWind, doors: doors, vent: S.vent == null ? ventAuto() : +S.vent,
-    fan: u.noWalls ? 0 : +S.fan, window: u.noWalls ? 0 : +S.window, insul: false, gutter: 0, footing: 0, colType: 'auto'};
+    fan: 0, window: u.noWalls ? 0 : +S.window, insul: false, gutter: 0, footing: 0, colType: 'auto'};
   if (E.spanCount(d.W) > 1) {   // 폭 40m 이상 → 같은 폭 여러 동을 붙인 연동 구조 (가운데 벽 없이 기둥만)
     var b = {}; ['W', 'L', 'H', 'roof', 'rise', 'bay', 'walls', 'doors', 'vent', 'fan', 'window', 'gutter', 'footing', 'insul', 'colType'].forEach(function (k) { b[k] = inp[k]; });
     inp.buildings = E.splitSpans(b);
@@ -2195,7 +2213,7 @@ function writeForm() {
   Array.prototype.forEach.call($('uses').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.u === S.use)); });
   Array.prototype.forEach.call($('roof').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.v === S.roof)); });
   $('region').value = S.region; fillDistricts();
-  ['place', 'W', 'L', 'H', 'doorN', 'doorS', 'window', 'fan'].forEach(function (k) { if (document.activeElement !== $(k)) $(k).value = S[k]; });
+  ['place', 'W', 'L', 'H', 'doorN', 'doorS', 'window'].forEach(function (k) { if (document.activeElement !== $(k)) $(k).value = S[k]; });
   var fa = fabricAuto();
   $('fabric').innerHTML = E.CUSTOMER_FABRICS.map(function (k) { return '<option value="' + k + '">' + fabName(k) + (k === fa ? ' (기본)' : '') + '</option>'; }).join('');
   if (S.fabric && E.CUSTOMER_FABRICS.indexOf(S.fabric) < 0) S.fabric = null;   // 예전 저장값이 목록에 없으면 기본으로
@@ -2207,7 +2225,7 @@ function writeForm() {
   $('vent').innerHTML = opts.join(''); $('vent').value = S.vent == null ? va : S.vent;
   $('highWind').checked = S.highWind;
   var noWalls = (E.USES[S.use] || {}).noWalls;
-  ['doorN', 'doorS', 'window', 'fan'].forEach(function (k) { $(k).disabled = !!noWalls; });
+  ['doorN', 'doorS', 'window'].forEach(function (k) { $(k).disabled = !!noWalls; });
 }
 function summaries() {
   var inp = input(), g = est.g;
@@ -2342,7 +2360,7 @@ function summary(id) {
     '규격: 폭 ' + inp.W + 'm × 길이 ' + inp.L + 'm × 처마 ' + inp.H + 'm (' + fmt(est.py, 0) + '평, 최고 ' + fmt(g.H + g.rise, 2) + 'm' + (spanText(inp) ? ', ' + spanText(inp) : '') + ')',
     '지붕: ' + E.ROOFS[inp.roof] + ' · 기둥: ' + (g.truss ? '쌍기둥' : '외기둥') + ' · 원단: ' + E.FABRICS[inp.fabric],
     '원단 색상: ' + inp.fabColor + ' · 지붕 패턴: ' + inp.roofPattern,
-    '출입문: ' + (inp.doors.length ? inp.doors.length + '개 (' + ds + 'm)' : '없음') + ' · 창문 ' + inp.window + ' · 환풍기 ' + inp.fan + ' · 벤츄레타 ' + inp.vent,
+    '출입문: ' + (inp.doors.length ? inp.doors.length + '개 (' + ds + 'm)' : '없음') + ' · 창문 ' + inp.window + ' · 벤츄레타 ' + inp.vent,
     '시공 시기: ' + $('when').value + ' · 바닥: ' + $('floor').value + ' · 토목 공사: ' + $('civil').value,
     '요청 사항: ' + ($('memo').value || '-')
   ].join('\n');
@@ -2428,7 +2446,7 @@ function bind() {
   $('form').addEventListener('input', function (e) {
     var t = e.target, k = t.id;
     if (k === 'region') { S.region = t.value; S.district = ''; fillDistricts(); schedule(); }
-    else if (['district', 'place', 'W', 'L', 'H', 'doorS', 'window', 'fan'].indexOf(k) >= 0) { S[k] = t.value; if (k === 'W' || k === 'L') S.vent = null; if (k === 'W' || k === 'L') writeFormLite(); schedule(); }
+    else if (['district', 'place', 'W', 'L', 'H', 'doorS', 'window'].indexOf(k) >= 0) { S[k] = t.value; if (k === 'W' || k === 'L') S.vent = null; if (k === 'W' || k === 'L') writeFormLite(); schedule(); }
     else if (k === 'doorN') { if (t.value !== '') { S.doorN = clamp(Math.round(num(t.value, 0)), 0, 10); schedule(); } }
     else if (k === 'vent') { S.vent = +t.value === ventAuto() ? null : +t.value; schedule(); }
     else if (k === 'fabColor' || k === 'roofPattern') { S[k] = t.value; schedule(); }
