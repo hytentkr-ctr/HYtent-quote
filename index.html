@@ -690,7 +690,9 @@ function takeoff(inp) {
   SIDES.forEach(function (s) {
     var end = s === 'front' || s === 'back';
     var off = (s === 'right' && inp.leanto) || (jnd[s] && jnd[s].full) || (end && !gableOn(inp, s));
-    valance[s] = off ? 0 : Math.max(0, g.vtd - (walls[s] ? Math.min(hs[s], g.H) : 0));
+    // 개방면도 마구리 천막 하단(처마 − 트러스 춤, 4면 같은 높이)까지 덮음 — 편경사 높은 쪽(우)은 지붕높이만큼 더 내려옴(2026-11-18)
+    var eaveS = s === 'right' && g.roof === 'shed' ? g.H + g.rise : g.H, vdep = eaveS - g.H + g.vtd;
+    valance[s] = off ? 0 : Math.max(0, vdep - (walls[s] ? Math.min(hs[s], eaveS) : 0));
   });
   var fabValance = g.L * (valance.left + valance.right) + g.W * (valance.front + valance.back);
   var fab = ceil(Math.max(0, fabRoof + fabEnd + fabSide + fabValance - cutArea) * P.fabOverlap);
@@ -1566,7 +1568,7 @@ function isoOne(pen, E, Q, n, fz) {
   var whm = function (s, z) { return wh[s] ? Math.min(hAt(z), wh[s] * 1000) : hAt(z); };
   function wallZ(z, fill, s) { var h = hAt(z), b0 = h - whm(s, z); pen.poly([Q(0, b0, z), Q(L, b0, z), Q(L, h, z), Q(0, h, z), Q(0, b0, z)], {w: 0.25, fill: fill}); }
   function gable(x, fill, s) { var y0 = w[s] ? H - whm(s, 0) : H, arr = [Q(x, y0, 0)]; prof.forEach(function (q) { arr.push(Q(x, q[1], q[0])); }); arr.push(Q(x, y0, W)); arr.push(Q(x, y0, 0)); pen.poly(arr, {w: 0.25, fill: fill}); }
-  if ((t.valance || {})[sF]) { var hf2 = hAt(zF), vd2 = g.vtd * 1000; pen.poly([Q(0, hf2 - vd2, zF), Q(L, hf2 - vd2, zF), Q(L, hf2, zF), Q(0, hf2, zF), Q(0, hf2 - vd2, zF)], {w: 0.25, fill: 'fabricDark'}); }
+  if ((t.valance || {})[sF]) { var hf2 = hAt(zF), vd2 = g.vtd * 1000; pen.poly([Q(0, H - vd2, zF), Q(L, H - vd2, zF), Q(L, hf2, zF), Q(0, hf2, zF), Q(0, H - vd2, zF)], {w: 0.25, fill: 'fabricDark'}); }
   if (w[sF]) wallZ(zF, 'fabricDark', sF);
   if (gb.back) gable(L, 'fabricDark', 'back');
   var bandX = function (x, fill) { var d = g.vtd * 1000; pen.poly([Q(x, H - d, 0), Q(x, H - d, W), Q(x, H, W), Q(x, H, 0), Q(x, H - d, 0)], {w: 0.25, fill: fill}); };
@@ -1598,7 +1600,7 @@ function isoOne(pen, E, Q, n, fz) {
     for (var xx = 0; xx < L - 1; xx += 800) { var p1 = Q(xx, y - vtd, z), p2 = Q(Math.min(L, xx + 400), y, z), p3 = Q(Math.min(L, xx + 800), y - vtd, z); pen.line(p1[0], p1[1], p2[0], p2[1], {w: 0.1, c: ez[2]}); pen.line(p2[0], p2[1], p3[0], p3[1], {w: 0.1, c: ez[2]}); }
   });
   var va = t.valance || {};   // 지붕 천막이 처마 트러스 아래까지
-  if (va[sN]) { var hn = hAt(zN); pen.poly([Q(0, hn - vtd, zN), Q(L, hn - vtd, zN), Q(L, hn, zN), Q(0, hn, zN), Q(0, hn - vtd, zN)], {w: 0.25, fill: 'fabric'}); }
+  if (va[sN]) { var hn = hAt(zN); pen.poly([Q(0, H - vtd, zN), Q(L, H - vtd, zN), Q(L, hn, zN), Q(0, hn, zN), Q(0, H - vtd, zN)], {w: 0.25, fill: 'fabric'}); }
   if (w[sN]) wallZ(zN, 'fabricWall', sN);
   if (gb.front) gable(0, 'fabricWall', 'front');
   if ((t.valance || {}).front) bandX(0, 'fabricWall');
@@ -2103,7 +2105,7 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
   // 지붕 천막이 좌·우 처마 트러스 아래까지 내려옴
   var va = E.t.valance || {};
   if (va.left) quad([0, H - g.vtd, -0.02], [L, H - g.vtd, -0.02], [L, H, -0.02], [0, H, -0.02], matFab);
-  if (va.right) quad([0, hr - g.vtd, W + 0.02], [L, hr - g.vtd, W + 0.02], [L, hr, W + 0.02], [0, hr, W + 0.02], matFab);
+  if (va.right) quad([0, H - g.vtd, W + 0.02], [L, H - g.vtd, W + 0.02], [L, hr, W + 0.02], [0, hr, W + 0.02], matFab);   // 편경사 높은 쪽도 마구리 하단 높이까지
   [[0, va.front, -0.02], [L, va.back, L + 0.02]].forEach(function (e) { if (e[1]) quad([e[2], H - g.vtd, 0], [e[2], H - g.vtd, W], [e[2], H, W], [e[2], H, 0], matWall); });   // 마구리 쪽 띠
   // 마구리(처마 위 삼각부) + 처마에서 아래로 덮는 벽
   function gable(x) { var p = [x, H, W / 2], ids = []; prof.forEach(function (q) { p.push(x, q[1], q[0]); }); p.push(x, H, W, x, H, 0); var m = prof.length + 2; for (var k = 1; k <= m; k++) ids.push(0, k, k % m + 1); mesh(p, ids, matWall); }
@@ -2177,6 +2179,23 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
     if (walls.right) girtYs(hrW, wh.right).forEach(function (y) { seg([0, y, W - o], [L, y, W - o]); });
     if (walls.front) girtYs(H, wh.front).forEach(function (y) { seg([o, y, 0], [o, y, W]); });
     if (walls.back) girtYs(H, wh.back).forEach(function (y) { seg([L - o, y, 0], [L - o, y, W]); });
+  });
+  // 마구리(처마 위 지붕 아래) 천막 가로봉: 처마선(H)부터 @1.65, 지붕선 안쪽만 (벽을 다 덮는 면은 벽 띠장 간격을 이어감)
+  function roofSpan(y) {   // 지붕 단면이 높이 y보다 높은 z 구간 (볼록한 단면이라 한 구간)
+    var zs = [];
+    prof.forEach(function (a, k) {
+      if (a[1] > y) zs.push(a[0]);
+      var b = prof[k + 1]; if (b && (a[1] - y) * (b[1] - y) < 0) zs.push(a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]));
+    });
+    if (!zs.length) return null;
+    var z1 = Math.min.apply(null, zs), z2 = Math.max.apply(null, zs);
+    return z2 - z1 > 0.1 ? [z1, z2] : null;
+  }
+  [['front', 0], ['back', L]].forEach(function (e3) {
+    if (!gb[e3[0]]) return;
+    var full = walls[e3[0]] && !(wh[e3[0]] && wh[e3[0]] < H - 0.01), y = full ? Math.ceil((H + 0.01) / 1.65) * 1.65 : H;
+    var topY = H + rise;
+    for (; y < topY - 0.25; y += 1.65) { var sp = roofSpan(y); if (!sp) continue; [-eo, eo].forEach(function (o) { var xo = e3[1] ? e3[1] - o : o; seg([xo, y, sp[0]], [xo, y, sp[1]]); }); }
   });
   var lg = new T.BufferGeometry(); lg.setAttribute('position', new T.Float32BufferAttribute(segs, 3)); grp.add(new T.LineSegments(lg, lineSteel));
   // 문·창문·벤츄레타
