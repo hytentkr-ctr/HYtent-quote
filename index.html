@@ -599,7 +599,7 @@ function gableOn(inp, s) {
   var w = inp.walls || {}, jn = inp.joined || {};
   if (w[s]) return true;
   if (jn[s] && jn[s].full) return false;   // 동 연결·길이 연장으로 막힌 면
-  return inp.gableCover != null ? !!inp.gableCover : inp.use === 'canopy';
+  return inp.gableCover != null && inp.gableCover !== '' ? !!inp.gableCover : true;   // 마구리는 기본으로 덮음(2026-11-18 사용자: 벽을 안 덮는 면도 마구리까지 천막), 끌 때만 false
 }
 // ───────── 물량 산출 ─────────
 function takeoff(inp) {
@@ -1365,7 +1365,7 @@ function sheetFront(E, info) {
   // 띠장(수평재)
   var hF = (t.wallHt ? t.wallHt.front : g.H) * 1000;
   if (t.walls.front && hF < H - 1) { v.line(0, H - hF, W, H - hF, {w: 0.35, c: 'accent', dash: '3 1'}); v.text(W * 0.25, H - hF - 450, '천막 하단 (처마에서 ' + fmt(hF) + ')', {size: 2.2, anchor: 'middle', c: 'accent'}); }
-  else if (t.walls.front) for (var yy = 1650; yy < H - 200; yy += 1650) v.line(0, yy, W, yy, {w: 0.18, c: 'dim'});
+  if (t.walls.front) for (var yy = hF < H - 1 ? H - hF : 1650; yy < H - 200; yy += 1650) v.line(0, yy, W, yy, {w: 0.18, c: 'dim'});   // 띠장: 전체 벽은 지면에서, 일부 높이는 천막 하단부터 @1,650
   // 출입문
   placedDoors(E, 'front').forEach(function (p) {
     var dh = Math.min(p.dh, H - 200);
@@ -1383,7 +1383,7 @@ function sheetFront(E, info) {
   var q3 = up[Math.round(up.length * 0.6)]; v.leader(q3[0], q3[1] - d * 0.5, 14, -14, 'Ø' + ms.wv + ' 수직재 / Ø' + ms.wd + ' 사재');
   v.leader(W * 0.62, ty, 16, 10, 'Ø' + ms.tie + ' 수평 하현재');
   v.leader(W * 0.36, (ty + yAt(lo, W * 0.36)) / 2, -16, 12, 'Ø' + ms.bv + ' 대수직 / Ø' + ms.bd + ' 대사재');
-  if (t.walls.front && hF >= H - 1 && H > 1700) v.leader(W * 0.85, 1650, 12, 8, 'Ø42.7 띠장 @1,650');
+  if (t.walls.front && H > 1700 && hF >= H - 1) v.leader(W * 0.85, 1650, 12, 8, 'Ø42.7 띠장 @1,650');
   }
   // 치수
   var ys = [0].concat(ep).concat([W]);
@@ -1494,7 +1494,7 @@ function sheetSide(E, info) {
   // 띠장
   var hS = (t.wallHt && t.walls.left ? t.wallHt.left : g.H) * 1000;   // 측면도 = 좌측면: 좌측 벽을 덮을 때만 띠장(개방면엔 가로줄 없음)
   if (t.walls.left && hS < H - 1) { v.line(0, H - hS, L, H - hS, {w: 0.35, c: 'accent', dash: '3 1'}); v.text(L / 2, H - hS - 450, '천막 하단 (처마에서 ' + fmt(hS) + ')', {size: 2.2, anchor: 'middle', c: 'accent'}); }
-  else if (t.walls.left) for (var yy2 = 1650; yy2 < H - vtH - 100; yy2 += 1650) v.line(0, yy2, L, yy2, {w: 0.18, c: 'dim'});
+  if (t.walls.left) for (var yy2 = hS < H - 1 ? H - hS : 1650; yy2 < H - vtH - 100; yy2 += 1650) v.line(0, yy2, L, yy2, {w: 0.18, c: 'dim'});
   // 가새 (양 끝 스팬)
   [[0, g.bay * 1000], [L - g.bay * 1000, L]].forEach(function (s) { v.line(s[0], 0, s[1], H - vtH, {w: 0.2, dash: '2 1'}); v.line(s[1], 0, s[0], H - vtH, {w: 0.2, dash: '2 1'}); });
   // 창문 / 도어 (좌측 벽 기준, 우측 벽 문은 점선)
@@ -1602,6 +1602,10 @@ function isoOne(pen, E, Q, n, fz) {
   if (w[sN]) wallZ(zN, 'fabricWall', sN);
   if (gb.front) gable(0, 'fabricWall', 'front');
   if ((t.valance || {}).front) bandX(0, 'fabricWall');
+  // 띠장 @1,650: 보이는 장변·정면 벽 (덮는 높이 안에서)
+  var girt = function (a, b) { var A = Q(a[0], a[1], a[2]), B = Q(b[0], b[1], b[2]); pen.line(A[0], A[1], B[0], B[1], {w: 0.15, c: 'dim'}); };
+  if (w[sN]) { var hz = hAt(zN), bz = hz - whm(sN, zN); for (var gy = bz > 1 ? bz : 1650; gy < hz - 200; gy += 1650) girt([0, gy, zN], [L, gy, zN]); }
+  if (w.front) { var bf = H - whm('front', 0); for (var gy2 = bf > 1 ? bf : 1650; gy2 < H - 200; gy2 += 1650) girt([0, gy2, 0], [0, gy2, W]); }
   if (w.front) placedDoors(E, 'front').forEach(function (p) { var dh = Math.min(p.dh, H - 200); pen.poly([Q(0, 0, p.s), Q(0, dh, p.s), Q(0, dh, p.s + p.dw), Q(0, 0, p.s + p.dw), Q(0, 0, p.s)], {w: 0.35, fill: 'door', c: 'accent'}); });
   if (w[sN] && !fz) {
     placedDoors(E, 'left').forEach(function (p) { var dh = Math.min(p.dh, H - 200); pen.poly([Q(p.s, 0, 0), Q(p.s, dh, 0), Q(p.s + p.dw, dh, 0), Q(p.s + p.dw, 0, 0), Q(p.s, 0, 0)], {w: 0.35, fill: 'door', c: 'accent'}); });
@@ -2164,17 +2168,16 @@ Tent3D.prototype.buildOne = function (E, Dr, grp) {
     for (xx = 0; xx < L - 1e-6; xx += st) { var xm = Math.min(L, xx + st / 2), xe = Math.min(L, xx + st); seg([xx, y - vtd, z], [xm, y, z]); seg([xm, y, z], [xe, y - vtd, z]); }
   });
   var hg = new T.BufferGeometry(); hg.setAttribute('position', new T.Float32BufferAttribute(heavy, 3)); grp.add(new T.LineSegments(hg, new T.LineBasicMaterial({color: 0x2c3540})));
-  // 띠장: 천막을 덮는 장변·높이에만 (개방면에는 없음)
-  var hrW = g.roof === 'shed' ? H + rise : H;
-  for (var yy = 1.65; yy < hrW - 0.2; yy += 1.65) {
-    if (walls.left && yy < H - 0.2 && yy >= H - (wh.left || H) - 0.01) seg([0, yy, 0], [L, yy, 0]);
-    if (walls.right && yy >= hrW - (wh.right || hrW) - 0.01) seg([0, yy, W], [L, yy, W]);
-  }
-  // 마구리(정면·배면) 벽 띠장: 덮는 면·높이에만, 처마 아래 직사각형 부분
-  for (var ye = 1.65; ye < H - 0.2; ye += 1.65) {
-    if (walls.front && ye >= H - (wh.front || H) - 0.01) seg([0, ye, 0], [0, ye, W]);
-    if (walls.back && ye >= H - (wh.back || H) - 0.01) seg([L, ye, 0], [L, ye, W]);
-  }
+  // 띠장: 천막을 덮는 면·높이에만 (개방면에는 없음). 전체 벽 = 지면에서 @1.65, 일부 높이 = 천막 하단부터 @1.65
+  function girtYs(top, h) { var out = [], b = h && h < top - 0.01 ? top - h : 0, y0 = b > 0 ? b : 1.65; for (var y = y0; y < top - 0.2; y += 1.65) out.push(y); return out; }
+  var hrW = g.roof === 'shed' ? H + rise : H, eo = 0.05;   // 벽면에서 살짝 바깥(천막 면에 가려지지 않게)
+  // 안·밖 양쪽에 그려서 밖에서 보든 열린 면으로 안쪽을 보든 천막에 가려지지 않게
+  [-eo, eo].forEach(function (o) {
+    if (walls.left) girtYs(H, wh.left).forEach(function (y) { seg([0, y, o], [L, y, o]); });
+    if (walls.right) girtYs(hrW, wh.right).forEach(function (y) { seg([0, y, W - o], [L, y, W - o]); });
+    if (walls.front) girtYs(H, wh.front).forEach(function (y) { seg([o, y, 0], [o, y, W]); });
+    if (walls.back) girtYs(H, wh.back).forEach(function (y) { seg([L - o, y, 0], [L - o, y, W]); });
+  });
   var lg = new T.BufferGeometry(); lg.setAttribute('position', new T.Float32BufferAttribute(segs, 3)); grp.add(new T.LineSegments(lg, lineSteel));
   // 문·창문·벤츄레타
   var matDoor = new T.MeshStandardMaterial({color: 0xe7a36a, roughness: 0.8, side: T.DoubleSide});
